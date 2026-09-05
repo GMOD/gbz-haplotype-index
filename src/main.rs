@@ -172,27 +172,6 @@ fn walk(source: &mut dyn PathSource, path_handle: usize, orientation: Orientatio
     (samples, length)
 }
 
-fn create_tables(connection: &Connection) {
-    connection
-        .execute_batch(
-            "DROP TABLE IF EXISTS HaplotypeSamples;
-             DROP TABLE IF EXISTS HaplotypeLengths;
-             CREATE TABLE HaplotypeSamples (
-                 node_handle INTEGER NOT NULL,
-                 node_offset INTEGER NOT NULL,
-                 path_handle INTEGER NOT NULL,
-                 orientation INTEGER NOT NULL,
-                 path_offset INTEGER NOT NULL,
-                 PRIMARY KEY (node_handle, node_offset)
-             ) STRICT;
-             CREATE TABLE HaplotypeLengths (
-                 path_handle INTEGER PRIMARY KEY,
-                 length INTEGER NOT NULL
-             ) STRICT;",
-        )
-        .unwrap();
-}
-
 fn run(source: &mut dyn PathSource, connection: &mut Connection, args: &Args) {
     let orientations: Vec<Orientation> = if args.forward_only {
         vec![Orientation::Forward]
@@ -235,18 +214,6 @@ fn run(source: &mut dyn PathSource, connection: &mut Connection, args: &Args) {
         handle += batch;
         eprintln!("{} / {} paths, {} samples", handle.min(paths), paths, inserted);
     }
-    connection
-        .execute(
-            "INSERT OR REPLACE INTO Tags(key, value) VALUES ('haplotype_index_interval', ?1)",
-            params![args.interval.to_string()],
-        )
-        .unwrap();
-    connection
-        .execute(
-            "INSERT OR REPLACE INTO Tags(key, value) VALUES ('haplotype_index_orientations', ?1)",
-            params![if args.forward_only { "forward" } else { "both" }],
-        )
-        .unwrap();
     eprintln!("Inserted {} samples for {} paths", inserted, paths);
 }
 
@@ -258,35 +225,95 @@ fn path_count_from_db(db: &str) -> usize {
     value.parse().unwrap_or(0)
 }
 
+const SCHEMA: &str = "CREATE TABLE HaplotypeSamples (
+    node_handle INTEGER NOT NULL,
+    node_offset INTEGER NOT NULL,
+    path_handle INTEGER NOT NULL,
+    orientation INTEGER NOT NULL,
+    path_offset INTEGER NOT NULL,
+    PRIMARY KEY (node_handle, node_offset)
+) STRICT;
+CREATE TABLE HaplotypeLengths (
+    path_handle INTEGER PRIMARY KEY,
+    length INTEGER NOT NULL
+) STRICT;";
+
+fn merge(db: &str, tmp: &str, args: &Args) {
+    let scratch = Connection::open(tmp).unwrap();
+    let mut connection = Connection::open(db).unwrap();
+    connection
+        .execute_batch(&format!("DROP TABLE IF EXISTS HaplotypeSamples; DROP TABLE IF EXISTS HaplotypeLengths; {}", SCHEMA))
+        .unwrap();
+    let transaction = connection.transaction().unwrap();
+    {
+        let mut read_samples = scratch
+            .prepare("SELECT node_handle, node_offset, path_handle, orientation, path_offset FROM HaplotypeSamples ORDER BY node_handle, node_offset")
+            .unwrap();
+        let mut write_sample = transaction
+            .prepare("INSERT INTO HaplotypeSamples(node_handle, node_offset, path_handle, orientation, path_offset) VALUES (?1, ?2, ?3, ?4, ?5)")
+            .unwrap();
+        let mut rows = read_samples.query([]).unwrap();
+        while let Some(row) = rows.next().unwrap() {
+            let values: [i64; 5] = [row.get(0).unwrap(), row.get(1).unwrap(), row.get(2).unwrap(), row.get(3).unwrap(), row.get(4).unwrap()];
+            write_sample.execute(params![values[0], values[1], values[2], values[3], values[4]]).unwrap();
+        }
+        let mut read_lengths = scratch.prepare("SELECT path_handle, length FROM HaplotypeLengths ORDER BY path_handle").unwrap();
+        let mut write_length = transaction.prepare("INSERT INTO HaplotypeLengths(path_handle, length) VALUES (?1, ?2)").unwrap();
+        let mut rows = read_lengths.query([]).unwrap();
+        while let Some(row) = rows.next().unwrap() {
+            let handle: i64 = row.get(0).unwrap();
+            let length: i64 = row.get(1).unwrap();
+            write_length.execute(params![handle, length]).unwrap();
+        }
+        transaction
+            .execute("INSERT OR REPLACE INTO Tags(key, value) VALUES ('haplotype_index_interval', ?1)", params![args.interval.to_string()])
+            .unwrap();
+        transaction
+            .execute(
+                "INSERT OR REPLACE INTO Tags(key, value) VALUES ('haplotype_index_orientations', ?1)",
+                params![if args.forward_only { "forward" } else { "both" }],
+            )
+            .unwrap();
+    }
+    transaction.commit().unwrap();
+}
+
 fn main() {
     let args = parse_args();
-    let mut connection = Connection::open(&args.db).unwrap_or_else(|e| {
-        eprintln!("Cannot open {}: {}", args.db, e);
-        process::exit(1);
-    });
-    create_tables(&connection);
-    match &args.gbz {
-        Some(gbz) => {
-            let graph: GBZ = serialize::load_from(gbz).unwrap_or_else(|e| {
-                eprintln!("Cannot load {}: {}", gbz, e);
-                process::exit(1);
-            });
-            if graph.metadata().is_none() {
-                eprintln!("The GBZ has no path metadata");
-                process::exit(1);
+    let tmp = format!("{}.haplotype-index.tmp", args.db);
+    let _ = std::fs::remove_file(&tmp);
+    {
+        let mut scratch = Connection::open(&tmp).unwrap_or_else(|e| {
+            eprintln!("Cannot create {}: {}", tmp, e);
+            process::exit(1);
+        });
+        scratch.execute_batch(SCHEMA).unwrap();
+        match &args.gbz {
+            Some(gbz) => {
+                let graph: GBZ = serialize::load_from(gbz).unwrap_or_else(|e| {
+                    eprintln!("Cannot load {}: {}", gbz, e);
+                    process::exit(1);
+                });
+                if graph.metadata().is_none() {
+                    eprintln!("The GBZ has no path metadata");
+                    process::exit(1);
+                }
+                let mut source = GbzSource { graph };
+                run(&mut source, &mut scratch, &args);
             }
-            let mut source = GbzSource { graph };
-            run(&mut source, &mut connection, &args);
-        }
-        None => {
-            let paths = path_count_from_db(&args.db);
-            let database = GBZBase::open(&args.db).unwrap_or_else(|e| {
-                eprintln!("Cannot open {} as a GBZ-base: {}", args.db, e);
-                process::exit(1);
-            });
-            let interface = GraphInterface::new(&database).unwrap();
-            let mut source = DbSource { interface, paths };
-            run(&mut source, &mut connection, &args);
+            None => {
+                let paths = path_count_from_db(&args.db);
+                let database = GBZBase::open(&args.db).unwrap_or_else(|e| {
+                    eprintln!("Cannot open {} as a GBZ-base: {}", args.db, e);
+                    process::exit(1);
+                });
+                let interface = GraphInterface::new(&database).unwrap();
+                let mut source = DbSource { interface, paths };
+                run(&mut source, &mut scratch, &args);
+            }
         }
     }
+    merge(&args.db, &tmp, &args);
+    let _ = std::fs::remove_file(&tmp);
+    eprintln!("Merged into {}", args.db);
 }
