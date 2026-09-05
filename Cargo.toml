@@ -8,6 +8,7 @@ license = "MIT"
 [dependencies]
 gbz = "0.7"
 simple-sds = "0.4"
+gbz-base = "0.6.1"
 rusqlite = { version = "0.38", features = ["bundled"] }
 
 [profile.release]
