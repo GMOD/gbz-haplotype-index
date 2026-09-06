@@ -208,15 +208,22 @@ fn orientations(args: &Args) -> Vec<Orientation> {
     }
 }
 
-fn walk_paths(source: &dyn PathSource, handles: std::ops::Range<usize>, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>) {
+fn walk_paths(source: &dyn PathSource, handles: std::ops::Range<usize>, args: &Args, label: &str) -> (Vec<Sample>, Vec<(usize, usize)>) {
     let mut samples = Vec::new();
     let mut lengths = Vec::new();
-    for path_handle in handles {
+    let started = Instant::now();
+    let total = handles.len();
+    let mut walked_bp: usize = 0;
+    for (done, path_handle) in handles.enumerate() {
         let mut length = 0;
         for &orientation in orientations(args).iter() {
             length = walk(source, path_handle, orientation, args.interval, &mut samples);
         }
+        walked_bp += length;
         lengths.push((path_handle, length));
+        if (done + 1) % 500 == 0 || done + 1 == total {
+            eprintln!("{}: {} / {} paths, {:.2} Gbp, {} samples, {:.0} s", label, done + 1, total, walked_bp as f64 / 1e9, samples.len(), started.elapsed().as_secs_f64());
+        }
     }
     (samples, lengths)
 }
@@ -230,8 +237,9 @@ fn walk_gbz(graph: &GBZ, paths: usize, args: &Args) -> (Vec<Sample>, Vec<(usize,
                 let range = (t * chunk).min(paths)..((t + 1) * chunk).min(paths);
                 scope.spawn(move || {
                     let source = GbzSource { graph };
-                    let result = walk_paths(&source, range.clone(), args);
-                    eprintln!("thread {} walked paths {}..{} ({} samples) in {:.0} s", t, range.start, range.end, result.0.len(), started.elapsed().as_secs_f64());
+                    let label = format!("thread {} (paths {}..{})", t, range.start, range.end);
+                    let result = walk_paths(&source, range.clone(), args, &label);
+                    eprintln!("{} done in {:.0} s", label, started.elapsed().as_secs_f64());
                     result
                 })
             })
@@ -341,7 +349,7 @@ fn main() {
             });
             let interface = GraphInterface::new(&database).unwrap();
             let source = DbSource { interface: std::cell::RefCell::new(interface) };
-            let (samples, lengths) = walk_paths(&source, 0..paths, &args);
+            let (samples, lengths) = walk_paths(&source, 0..paths, &args, "database walk");
             (samples, lengths, paths)
         }
     };
