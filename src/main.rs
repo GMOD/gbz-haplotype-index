@@ -21,7 +21,8 @@ HaplotypeLengths. The path start and end are always sampled.
 By default the tables are written into the database itself, replacing any
 existing ones. With --output FILE they are written into FILE as a standalone
 companion database that the reader opens beside the graph database; the
-companion records the graph's path count so a mismatch is caught at open.
+companion records the graph's path and node counts so a mismatch is caught at
+open.
 
 With --from-db the walk reads node records from the database itself, so the
 GBZ is not needed. Walking a GBZ uses --threads (default: all cores).
@@ -269,7 +270,7 @@ CREATE TABLE HaplotypeLengths (
     length INTEGER NOT NULL
 ) STRICT;";
 
-fn write(target: &str, standalone: bool, mut samples: Vec<Sample>, lengths: &[(usize, usize)], paths: usize, args: &Args) {
+fn write(target: &str, standalone: bool, mut samples: Vec<Sample>, lengths: &[(usize, usize)], paths: usize, nodes: usize, args: &Args) {
     let started = Instant::now();
     samples.sort_unstable_by_key(|s| (s.node_handle, s.node_offset));
     eprintln!("Sorted {} samples in {:.0} s", samples.len(), started.elapsed().as_secs_f64());
@@ -302,22 +303,23 @@ fn write(target: &str, standalone: bool, mut samples: Vec<Sample>, lengths: &[(u
         write_tag.execute(params!["haplotype_index_interval", args.interval.to_string()]).unwrap();
         write_tag.execute(params!["haplotype_index_orientations", if args.forward_only { "forward" } else { "both" }]).unwrap();
         write_tag.execute(params!["haplotype_index_paths", paths.to_string()]).unwrap();
+        write_tag.execute(params!["haplotype_index_nodes", nodes.to_string()]).unwrap();
     }
     transaction.commit().unwrap();
     eprintln!("Wrote {} samples for {} paths to {} in {:.0} s", samples.len(), paths, target, started.elapsed().as_secs_f64());
 }
 
-fn path_count_from_db(db: &str) -> usize {
+fn count_from_db(db: &str, key: &str) -> usize {
     let connection = Connection::open(db).unwrap();
     let value: String = connection
-        .query_row("SELECT value FROM Tags WHERE key = 'paths'", [], |row| row.get(0))
+        .query_row("SELECT value FROM Tags WHERE key = ?1", params![key], |row| row.get(0))
         .unwrap_or_else(|_| "0".to_string());
     value.parse().unwrap_or(0)
 }
 
 fn main() {
     let args = parse_args();
-    let (samples, lengths, paths) = match &args.gbz {
+    let (samples, lengths, paths, nodes) = match &args.gbz {
         Some(gbz) => {
             let started = Instant::now();
             let graph: GBZ = serialize::load_from(gbz).unwrap_or_else(|e| {
@@ -330,19 +332,26 @@ fn main() {
                 process::exit(1);
             }
             eprintln!("Loaded {} with {} paths in {:.0} s", gbz, paths, started.elapsed().as_secs_f64());
+            let nodes = graph.nodes();
             if let Some(db) = &args.db {
-                let db_paths = path_count_from_db(db);
+                let db_paths = count_from_db(db, "paths");
                 if db_paths != paths {
                     eprintln!("{} has {} paths but {} has {}", gbz, paths, db, db_paths);
                     process::exit(1);
                 }
+                let db_nodes = count_from_db(db, "nodes");
+                if db_nodes != nodes {
+                    eprintln!("{} has {} nodes but {} has {}", gbz, nodes, db, db_nodes);
+                    process::exit(1);
+                }
             }
             let (samples, lengths) = walk_gbz(&graph, paths, &args);
-            (samples, lengths, paths)
+            (samples, lengths, paths, nodes)
         }
         None => {
             let db = args.db.as_ref().unwrap();
-            let paths = path_count_from_db(db);
+            let paths = count_from_db(db, "paths");
+            let nodes = count_from_db(db, "nodes");
             let database = GBZBase::open(db).unwrap_or_else(|e| {
                 eprintln!("Cannot open {} as a GBZ-base: {}", db, e);
                 process::exit(1);
@@ -350,12 +359,12 @@ fn main() {
             let interface = GraphInterface::new(&database).unwrap();
             let source = DbSource { interface: std::cell::RefCell::new(interface) };
             let (samples, lengths) = walk_paths(&source, 0..paths, &args, "database walk");
-            (samples, lengths, paths)
+            (samples, lengths, paths, nodes)
         }
     };
     match (&args.output, &args.db) {
-        (Some(output), _) => write(output, true, samples, &lengths, paths, &args),
-        (None, Some(db)) => write(db, false, samples, &lengths, paths, &args),
+        (Some(output), _) => write(output, true, samples, &lengths, paths, nodes, &args),
+        (None, Some(db)) => write(db, false, samples, &lengths, paths, nodes, &args),
         (None, None) => unreachable!(),
     }
 }
