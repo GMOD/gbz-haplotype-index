@@ -32,11 +32,11 @@ const db = await GBZBase.open(new RemoteFile(graphUrl), {
 })
 ```
 
-This is how a database someone else publishes gets haplotype names without
-anyone rehosting it: HPRC publishes `hprc-v2.1-mc-grch38.gbz.db` (10 GB) beside
-its graphs, and the companion for it is built from the 5 GB GBZ. The companion
-records the graph's path and node counts and the reader refuses one built for a
-different graph.
+A standalone companion adds haplotype names to a database someone else
+publishes, without needing to rehost it: HPRC publishes
+`hprc-v2.1-mc-grch38.gbz.db` (10 GB) beside its graphs, and the companion for it
+is built from the 5 GB GBZ. The companion records the graph's path and node
+counts and the reader refuses one built for a different graph.
 
 ## What the tables hold
 
@@ -59,11 +59,12 @@ On the HPRC v2.1 graph at the default 131,072 bp that is 45,557 anchors over the
 `--anchor-spacing 0` writes none, and the `Tags` table records the spacing and
 the rule. The upstream `query` binary keeps working on the augmented database.
 
-Both orientations are needed: about half the contigs of a graph like HPRC's are
-stored against their reference, and a walk of one of those meets no sample from
-a forward-only index. `GBZBase.open` refuses an index the tool wrote with
-`--forward-only` (its `haplotype_index_orientations` tag says `forward`) with
-`ForwardOnlyIndexError`, so the half-named result never reaches a caller.
+Both the forward and reverse orientations are needed: about half the contigs of
+a graph like HPRC's are stored against their reference, and a walk of one of
+those meets no sample from a forward-only index. `GBZBase.open` refuses an index
+the tool wrote with `--forward-only` (its `haplotype_index_orientations` tag
+says `forward`) with `ForwardOnlyIndexError`, so the half-named result never
+reaches a caller.
 
 ## The sampled walk
 
@@ -72,9 +73,9 @@ nodes with one index scan per run of consecutive node ids (a window whose nodes
 sit in far-apart id ranges, as a tandem repeat's do, is not one scan across the
 gap), chains each haplotype's fragments to the next through the private nodes
 between them, and for a chain that met no sample inside the window walks on
-until it finds one, up to four intervals past the last fragment it linked. This
-is what fills in the `resolved` half of a record: PanSN name, haplotype interval
-in that contig's coordinates, and the path handle.
+until it finds one, up to four intervals past the last fragment it linked.
+`identifyPaths()` fills in the `resolved` half of a record this way: PanSN name,
+haplotype interval in that contig's coordinates, and the path handle.
 
 `getAlignmentsForRange` and `getSubgraphForRange` run it for you when the
 database has the tables; on the lower-level path you call it yourself before
@@ -96,8 +97,8 @@ A path through a duplicated stretch has several rows at the anchor node, one per
 visit, and only one visit is followed by the window: the reader tries the visit
 whose row sits nearest the reference's own first (GBWT rows are ordered by the
 sequence before them) and stops at the first that goes through, so HG01109#1's
-second amylase copy costs nothing where it used to walk 30,000 steps to the
-bound.
+second amylase copy costs nothing, where walking to the bound would otherwise
+take 30,000 steps.
 
 A wanted contig with no row at the anchor, because it bypasses that node or
 starts inside the window, is found the way the sampled route finds every
