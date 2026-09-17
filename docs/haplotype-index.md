@@ -1,8 +1,9 @@
 # Naming haplotypes
 
-Upstream gbz-base cannot say which haplotype a subgraph path belongs to, so it
-emits `unknown#N`. This package adds that with two side tables that a small Rust
-tool writes into an existing database, built on the unmodified upstream crates.
+Upstream gbz-base cannot determine which haplotype a subgraph path belongs to,
+so it emits `unknown#N`. This package adds that with two side tables that a
+small Rust tool writes into an existing database, built on the unmodified
+upstream crates.
 
 ## Building the index
 
@@ -63,8 +64,8 @@ Both the forward and reverse orientations are needed: about half the contigs of
 a graph like HPRC's are stored against their reference, and a walk of one of
 those meets no sample from a forward-only index. `GBZBase.open` refuses an index
 the tool wrote with `--forward-only` (its `haplotype_index_orientations` tag
-says `forward`) with `ForwardOnlyIndexError`, so the half-named result never
-reaches a caller.
+records `forward`) with `ForwardOnlyIndexError`, rather than return a half-named
+result to a caller.
 
 ## The sampled walk
 
@@ -89,7 +90,7 @@ and `--stats` reports it as the anchored walk. The reader looks up the anchor
 for the multiple of the spacing at or before the window, walks the reference
 from that node to a little past the window to learn which nodes are the
 reference's and where, reads the rows at the anchor node, and for each row whose
-path the predicate wants walks that path with `lf()` from its own position
+path the predicate accepts walks that path with `lf()` from its own position
 through the window, so its identity and coordinate come from the row and no
 chain walk or index scan is needed.
 
@@ -108,9 +109,9 @@ walk out of the window backwards) is followed back to the reference before the
 window and the walk starts there.
 
 When a walk cannot be completed, the whole window falls back to the sampled
-route and `--stats` says why. A companion without `HaplotypeAnchors` takes the
-sampled route and trims it, as does `haplotypes: 'distinct'`. What each route
-costs is measured in
+route and `--stats` reports why. A companion without `HaplotypeAnchors` takes
+the sampled route and trims it, as does `haplotypes: 'distinct'`. What each
+route costs is measured in
 [performance.md](performance.md#keeping-a-set-of-haplotypes).
 
 ## Cutting to a set of haplotypes
