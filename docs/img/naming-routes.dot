@@ -1,0 +1,60 @@
+// Source for docs/img/naming-routes.svg, which docs/haplotype-index.md embeds.
+// Regenerate with: dot -Tsvg docs/img/naming-routes.dot -o docs/img/naming-routes.svg
+// Palette matches dataflow.dot.
+digraph namingroutes {
+  rankdir=TB
+  bgcolor="white"
+  nodesep=0.35
+  ranksep=0.3
+  newrank=true
+  node [shape=box style="filled,rounded" fillcolor="#f6f8fa" color="#57606a"
+        fontname="Helvetica" fontsize=10 margin="0.14,0.07"]
+  edge [color="#57606a" fontname="Helvetica" fontsize=9]
+
+  query  [label="query a window" fillcolor="#ddf4ff" color="#0969da"]
+  choose [label="keep, and an index\nbuilt with --anchor-spacing?" shape=diamond style=filled margin="0.02,0.02"]
+  out    [label="named walks" fillcolor="#ddf4ff" color="#0969da"]
+
+  query -> choose
+
+  subgraph cluster_sampled {
+    label="Sampled: name every walk, then filter\ncost grows with every haplotype"
+    labelloc="t"
+    fontname="Helvetica"
+    fontsize=10
+    fontcolor="#57606a"
+    color="#d0d7de"
+    style="rounded"
+    margin=10
+    s1 [label="extract every walk crossing the window\nall unlabeled"]
+    s2 [label="name each from a sample on its steps\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
+    s3 [label="no sample in the window:\nfollow past it, up to 4 intervals"]
+    s4 [label="with keep: drop the rest"]
+    s1 -> s2 -> s3 -> s4
+  }
+
+  subgraph cluster_anchored {
+    label="Anchored: start from the names, walk only the kept ones\ncost grows with the haplotypes kept"
+    labelloc="t"
+    fontname="Helvetica"
+    fontsize=10
+    fontcolor="#57606a"
+    color="#d0d7de"
+    style="rounded"
+    margin=10
+    a1 [label="find the anchor at or before the window\nwalk the reference from it"]
+    a2 [label="read every haplotype at the anchor, named\nHaplotypeAnchors" fillcolor="#dafbe1" color="#1a7f37"]
+    a3 [label="keep the chosen rows"]
+    a4 [label="walk each forward through the window"]
+    a5 [label="contig starts in the window:\nfind it from a sample, walk forward" style="dashed,rounded,filled"]
+    a1 -> a2 -> a3 -> a4
+    a3 -> a5 [style=dashed label=" missing from\l the anchor\l"]
+  }
+
+  choose -> s1 [label=" no "]
+  choose -> a1 [label=" yes "]
+  a4 -> s1 [style=dashed constraint=false label=" a walk never\l reaches the window\l"]
+  s4 -> out
+  a4 -> out
+  a5 -> out [style=dashed]
+}
