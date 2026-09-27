@@ -25,10 +25,10 @@ digraph namingroutes {
   out    [label="walks labelled\nsample#haplotype" fillcolor="#ddf4ff" color="#0969da"]
 
   legend [shape=plaintext style="" margin=0 label=<
-    <table border="0" cellborder="1" cellspacing="3" cellpadding="4" style="rounded">
-      <tr><td bgcolor="#f6f8fa" color="#57606a">reads graph.gbz.db</td></tr>
-      <tr><td bgcolor="#dafbe1" color="#1a7f37">reads the sidecar graph.haplotype-index.db</td></tr>
-      <tr><td bgcolor="white" color="#57606a">in memory</td></tr>
+    <table border="1" color="#d0d7de" cellborder="0" cellspacing="4" cellpadding="2" style="rounded">
+      <tr><td border="1" bgcolor="#f6f8fa" color="#57606a" width="14"></td><td align="left">reads graph.gbz.db</td></tr>
+      <tr><td border="1" bgcolor="#dafbe1" color="#1a7f37" width="14"></td><td align="left">reads the sidecar graph.haplotype-index.db</td></tr>
+      <tr><td border="1" bgcolor="white" color="#57606a" width="14"></td><td align="left">in memory</td></tr>
     </table>>]
   { rank=same; query; legend }
 
