@@ -40,10 +40,10 @@ gbz-base-query https://host/graph.gbz.db \
   --haplotype-index https://host/graph.haplotype-index.db ...
 ```
 
-For the 10 GB HPRC v2.1 GRCh38 database, the companion is 7.9 GB. Building it
-from the GBZ takes 13 minutes on 24 cores and peaks at 12 GB of memory. The
-companion records the graph's path and node counts, and `open` checks them
-against the graph.
+For the 10 GB HPRC v2.1 GRCh38 database, the haplotype index is 7.9 GB. Building
+it from the GBZ takes 13 minutes on 24 cores and peaks at 12 GB of memory. The
+index records the graph's path and node counts, and `open` checks them against
+the graph.
 
 ## Tables
 
