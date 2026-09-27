@@ -17,11 +17,11 @@ a different choice.
 ## Samples and anchors
 
 A path is one contig of one haplotype, named `sample#haplotype#contig`. The GBWT
-stores each path as a walk, a sequence of positions: a node, plus the rank of
-this walk among the walks through that node. The GBWT maps each position to the
-next one, and identifies a path at the start of its walk, which can be a whole
-chromosome away from a query window. The haplotype index records the path at
-positions along the way:
+stores each path as a walk, a sequence of positions. A position is a node plus
+the rank of one walk among the walks through that node, so each position belongs
+to exactly one walk. The GBWT maps each position to the next one, and identifies
+a path at the start of its walk, which can be a whole chromosome away from a
+query window. The haplotype index records the path at positions along the way:
 
 - A **sample** records a position, the path through it, the orientation and the
   coordinate along that path. `gbz-haplotype-index` writes one every
@@ -35,6 +35,17 @@ positions along the way:
   node list every haplotype passing it.
 
 ![graph.gbz.db lists the walks at each node by rank and names each path at the start of its walk. The haplotype index adds a sample every --interval bp that maps a position to a path, so a query names a walk from the next sample along it](img/haplotype-samples.svg)
+
+A query that uses the `keep` option starts from an anchor node.
+`gbz-haplotype-index` places the samples of each path by that path's own
+coordinates, so the samples of different haplotypes fall on different nodes. At
+`--interval 16384`, a 4 kb window holds a sample running with the reference for
+about one haplotype in four. To find the others from samples, the query would
+have to extract and follow every walk through the window, which is the sampled
+route. The samples at an anchor node list every haplotype passing it, with its
+position, so one lookup before the window gives the query a start on each chosen
+walk. Samples in the window serve as the fallback for a haplotype that bypasses
+the anchor node or starts after it ([step 4](#anchored)).
 
 Table `HaplotypeSamples` contains the samples, `HaplotypeAnchors` lists the
 anchor nodes, and `HaplotypeLengths` lists the length of each path.
@@ -110,7 +121,7 @@ options passed with the query. Both routes find the same haplotype for every
 walk. The tests compare the two, and check each result by walking back through
 the GBWT to the start of the path.
 
-![The sampled route extracts every walk through the window and follows each one to a sample. The anchored route reads the samples at one anchor node, which list every haplotype passing it, then follows the chosen walks through the window](img/naming-routes-layout.svg)
+![The sampled route extracts every walk through the window and follows each one to a sample. The anchored route reads the samples at one anchor node, which list every haplotype passing it, then follows the chosen walks through the window. A strip of chr6 marks one anchor per 131,072 bp and the one a window at 33,000,000 uses](img/naming-routes-layout.svg)
 
 - **Sampled**: the query extracts every walk through the window, then follows
   each walk to a sample to identify it. The cost grows with the number of
