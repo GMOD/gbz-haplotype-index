@@ -1,10 +1,10 @@
 # Naming haplotypes
 
-Upstream gbz-base prints each walk in a window as `unknown#N`. This package
-names the walks using a haplotype index, a set of extra tables that the Rust
-program `gbz-haplotype-index` writes into the database or into a separate
-companion file. Build the index once per graph, then pass it to the library or
-the command line.
+Upstream gbz-base names only the query path and prints every other walk as
+`unknown#N`. This package names the walks using a haplotype index, a set of
+extra tables that the Rust program `gbz-haplotype-index` writes into the
+database or into a separate companion file. Build the index once per graph, then
+pass it to the library or the command line.
 
 ## Building the index
 
