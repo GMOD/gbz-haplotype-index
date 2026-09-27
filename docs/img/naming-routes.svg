@@ -61,7 +61,7 @@
 <title>s1</title>
 <path fill="#f6f8fa" stroke="#57606a" d="M220.2,-339.33C220.2,-339.33 29.8,-339.33 29.8,-339.33 23.8,-339.33 17.8,-333.33 17.8,-327.33 17.8,-327.33 17.8,-315.33 17.8,-315.33 17.8,-309.33 23.8,-303.33 29.8,-303.33 29.8,-303.33 220.2,-303.33 220.2,-303.33 226.2,-303.33 232.2,-309.33 232.2,-315.33 232.2,-315.33 232.2,-327.33 232.2,-327.33 232.2,-333.33 226.2,-339.33 220.2,-339.33"/>
 <text xml:space="preserve" text-anchor="middle" x="125" y="-324.58" font-family="Helvetica,sans-Serif" font-size="10.00">extract every walk crossing the window</text>
-<text xml:space="preserve" text-anchor="middle" x="125" y="-311.83" font-family="Helvetica,sans-Serif" font-size="10.00">all unnamed</text>
+<text xml:space="preserve" text-anchor="middle" x="125" y="-311.83" font-family="Helvetica,sans-Serif" font-size="10.00">none yet identified</text>
 </g>
 <!-- choose&#45;&gt;s1 -->
 <g id="edge8" class="edge">
@@ -87,46 +87,47 @@
 <!-- out -->
 <g id="node4" class="node">
 <title>out</title>
-<path fill="#ddf4ff" stroke="#0969da" d="M238.7,-36C238.7,-36 177.3,-36 177.3,-36 171.3,-36 165.3,-30 165.3,-24 165.3,-24 165.3,-12 165.3,-12 165.3,-6 171.3,0 177.3,0 177.3,0 238.7,0 238.7,0 244.7,0 250.7,-6 250.7,-12 250.7,-12 250.7,-24 250.7,-24 250.7,-30 244.7,-36 238.7,-36"/>
-<text xml:space="preserve" text-anchor="middle" x="208" y="-14.88" font-family="Helvetica,sans-Serif" font-size="10.00">named walks</text>
+<path fill="#ddf4ff" stroke="#0969da" d="M252.58,-36C252.58,-36 163.42,-36 163.42,-36 157.42,-36 151.42,-30 151.42,-24 151.42,-24 151.42,-12 151.42,-12 151.42,-6 157.42,0 163.42,0 163.42,0 252.58,0 252.58,0 258.58,0 264.58,-6 264.58,-12 264.58,-12 264.58,-24 264.58,-24 264.58,-30 258.58,-36 252.58,-36"/>
+<text xml:space="preserve" text-anchor="middle" x="208" y="-21.25" font-family="Helvetica,sans-Serif" font-size="10.00">walks labelled</text>
+<text xml:space="preserve" text-anchor="middle" x="208" y="-8.5" font-family="Helvetica,sans-Serif" font-size="10.00">sample#haplotype</text>
 </g>
 <!-- s2 -->
 <g id="node6" class="node">
 <title>s2</title>
-<path fill="#dafbe1" stroke="#1a7f37" d="M217.45,-272.16C217.45,-272.16 46.55,-272.16 46.55,-272.16 40.55,-272.16 34.55,-266.16 34.55,-260.16 34.55,-260.16 34.55,-248.16 34.55,-248.16 34.55,-242.16 40.54,-236.16 46.54,-236.16 46.54,-236.16 217.45,-236.16 217.45,-236.16 223.45,-236.16 229.45,-242.16 229.45,-248.16 229.45,-248.16 229.45,-260.16 229.45,-260.16 229.45,-266.16 223.45,-272.16 217.45,-272.16"/>
-<text xml:space="preserve" text-anchor="middle" x="132" y="-257.41" font-family="Helvetica,sans-Serif" font-size="10.00">name each from a sample it passes</text>
-<text xml:space="preserve" text-anchor="middle" x="132" y="-244.66" font-family="Helvetica,sans-Serif" font-size="10.00">HaplotypeSamples</text>
+<path fill="#dafbe1" stroke="#1a7f37" d="M217.95,-272.16C217.95,-272.16 38.04,-272.16 38.04,-272.16 32.05,-272.16 26.05,-266.16 26.05,-260.16 26.05,-260.16 26.05,-248.16 26.05,-248.16 26.05,-242.16 32.04,-236.16 38.04,-236.16 38.04,-236.16 217.95,-236.16 217.95,-236.16 223.95,-236.16 229.95,-242.16 229.95,-248.16 229.95,-248.16 229.95,-260.16 229.95,-260.16 229.95,-266.16 223.95,-272.16 217.95,-272.16"/>
+<text xml:space="preserve" text-anchor="middle" x="128" y="-257.41" font-family="Helvetica,sans-Serif" font-size="10.00">identify each from a sample it passes</text>
+<text xml:space="preserve" text-anchor="middle" x="128" y="-244.66" font-family="Helvetica,sans-Serif" font-size="10.00">HaplotypeSamples</text>
 </g>
 <!-- s1&#45;&gt;s2 -->
 <g id="edge3" class="edge">
 <title>s1&#45;&gt;s2</title>
-<path fill="none" stroke="#57606a" d="M126.88,-302.87C127.51,-296.93 128.24,-290.13 128.95,-283.56"/>
-<polygon fill="#57606a" stroke="#57606a" points="132.42,-284.05 130.01,-273.73 125.46,-283.3 132.42,-284.05"/>
+<path fill="none" stroke="#57606a" d="M125.8,-302.87C126.08,-296.93 126.39,-290.13 126.69,-283.56"/>
+<polygon fill="#57606a" stroke="#57606a" points="130.18,-283.89 127.14,-273.74 123.19,-283.57 130.18,-283.89"/>
 </g>
 <!-- s3 -->
 <g id="node7" class="node">
 <title>s3</title>
-<path fill="#f6f8fa" stroke="#57606a" d="M211.83,-157C211.83,-157 100.17,-157 100.17,-157 94.17,-157 88.17,-151 88.17,-145 88.17,-145 88.17,-133 88.17,-133 88.17,-127 94.17,-121 100.17,-121 100.17,-121 211.83,-121 211.83,-121 217.83,-121 223.83,-127 223.83,-133 223.83,-133 223.83,-145 223.83,-145 223.83,-151 217.83,-157 211.83,-157"/>
-<text xml:space="preserve" text-anchor="middle" x="156" y="-135.88" font-family="Helvetica,sans-Serif" font-size="10.00">with keep: drop the rest</text>
+<path fill="#f6f8fa" stroke="#57606a" d="M210.83,-157C210.83,-157 99.17,-157 99.17,-157 93.17,-157 87.17,-151 87.17,-145 87.17,-145 87.17,-133 87.17,-133 87.17,-127 93.17,-121 99.17,-121 99.17,-121 210.83,-121 210.83,-121 216.83,-121 222.83,-127 222.83,-133 222.83,-133 222.83,-145 222.83,-145 222.83,-151 216.83,-157 210.83,-157"/>
+<text xml:space="preserve" text-anchor="middle" x="155" y="-135.88" font-family="Helvetica,sans-Serif" font-size="10.00">with keep: drop the rest</text>
 </g>
 <!-- s2&#45;&gt;s3 -->
 <g id="edge4" class="edge">
 <title>s2&#45;&gt;s3</title>
-<path fill="none" stroke="#57606a" d="M135.65,-235.98C139.45,-218.03 145.48,-189.59 149.99,-168.32"/>
-<polygon fill="#57606a" stroke="#57606a" points="153.36,-169.34 152.01,-158.83 146.51,-167.89 153.36,-169.34"/>
+<path fill="none" stroke="#57606a" d="M132.1,-235.98C136.38,-218.03 143.17,-189.59 148.24,-168.32"/>
+<polygon fill="#57606a" stroke="#57606a" points="151.59,-169.36 150.51,-158.82 144.78,-167.74 151.59,-169.36"/>
 </g>
 <!-- s3&#45;&gt;out -->
 <g id="edge10" class="edge">
 <title>s3&#45;&gt;out</title>
-<path fill="none" stroke="#57606a" d="M163.56,-120.7C172.03,-101.31 185.89,-69.6 195.88,-46.74"/>
-<polygon fill="#57606a" stroke="#57606a" points="199.03,-48.28 199.82,-37.71 192.61,-45.47 199.03,-48.28"/>
+<path fill="none" stroke="#57606a" d="M162.71,-120.7C171.34,-101.31 185.46,-69.6 195.64,-46.74"/>
+<polygon fill="#57606a" stroke="#57606a" points="198.8,-48.27 199.67,-37.71 192.4,-45.42 198.8,-48.27"/>
 </g>
 <!-- a2 -->
 <g id="node9" class="node">
 <title>a2</title>
 <path fill="#dafbe1" stroke="#1a7f37" d="M437.58,-278.33C437.58,-278.33 294.42,-278.33 294.42,-278.33 288.42,-278.33 282.42,-272.33 282.42,-266.33 282.42,-266.33 282.42,-242 282.42,-242 282.42,-236 288.42,-230 294.42,-230 294.42,-230 437.58,-230 437.58,-230 443.58,-230 449.58,-236 449.58,-242 449.58,-242 449.58,-266.33 449.58,-266.33 449.58,-272.33 443.58,-278.33 437.58,-278.33"/>
 <text xml:space="preserve" text-anchor="middle" x="366" y="-263.79" font-family="Helvetica,sans-Serif" font-size="10.00">read the samples there: every</text>
-<text xml:space="preserve" text-anchor="middle" x="366" y="-251.04" font-family="Helvetica,sans-Serif" font-size="10.00">haplotype passing it, named</text>
+<text xml:space="preserve" text-anchor="middle" x="366" y="-251.04" font-family="Helvetica,sans-Serif" font-size="10.00">haplotype passing it</text>
 <text xml:space="preserve" text-anchor="middle" x="366" y="-238.29" font-family="Helvetica,sans-Serif" font-size="10.00">HaplotypeSamples</text>
 </g>
 <!-- a1&#45;&gt;a2 -->

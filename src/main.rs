@@ -14,7 +14,7 @@ use std::time::Instant;
 const USAGE: &str = "Usage: gbz-haplotype-index [options] graph.gbz [graph.gbz.db] index.db
        gbz-haplotype-index [options] --from-db graph.gbz.db index.db
 
-Writes a haplotype index for a gbz-base database into a companion file,
+Writes a haplotype index for a gbz-base database into a separate file,
 index.db. Give graph.gbz.db alongside graph.gbz to check that the two match.
 
 Walks every path in both orientations and writes a sample every --interval bp
@@ -31,7 +31,7 @@ orientations. A reader can then list every haplotype passing a reference
 position, with its own coordinate, from the rows at one node.
 --anchor-spacing 0 writes none.
 
-The companion records the graph's path and node counts so the reader catches a
+The index records the graph's path and node counts so the reader catches a
 mismatch at open.
 
 With --from-db the walk reads node records from the database itself, so the

@@ -22,7 +22,7 @@ digraph namingroutes {
           shape=note fontname="Courier" fontsize=9 fillcolor="#fff8c5" color="#9a6700"]
   { rank=same; choose; how }
   choose -> how [style=dotted arrowhead=none]
-  out    [label="named walks" fillcolor="#ddf4ff" color="#0969da"]
+  out    [label="walks labelled\nsample#haplotype" fillcolor="#ddf4ff" color="#0969da"]
 
   query -> choose
 
@@ -36,8 +36,8 @@ digraph namingroutes {
     color="#d0d7de"
     style="rounded"
     margin=10
-    s1 [label="extract every walk crossing the window\nall unnamed"]
-    s2 [label="name each from a sample it passes\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
+    s1 [label="extract every walk crossing the window\nnone yet identified"]
+    s2 [label="identify each from a sample it passes\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
     s3 [label="with keep: drop the rest"]
     s1 -> s2 -> s3
   }
@@ -53,7 +53,7 @@ digraph namingroutes {
     style="rounded"
     margin=10
     a1 [label="find the anchor node before the window\nHaplotypeAnchors" fillcolor="#dafbe1" color="#1a7f37"]
-    a2 [label="read the samples there: every\nhaplotype passing it, named\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
+    a2 [label="read the samples there: every\nhaplotype passing it\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
     a2b [label="take the chosen haplotypes"]
     a3 [label="walk each forward through the window"]
     a1 -> a2 -> a2b -> a3

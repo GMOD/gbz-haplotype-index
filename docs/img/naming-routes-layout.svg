@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 448" font-family="Helvetica, Arial, sans-serif" font-size="11">
 <defs><marker id="t" viewBox="0 0 2 10" refX="1" refY="5" markerWidth="2" markerHeight="10" orient="auto"><rect width="2" height="10" fill="#57606a"/></marker></defs>
 <rect width="100%" height="100%" fill="#ffffff"/>
-<text x="20" y="22" fill="#24292f" font-weight="bold">Sampled: extract every walk in the window, then name each from a sample it passes</text>
+<text x="20" y="22" fill="#24292f" font-weight="bold">Sampled: extract every walk in the window, then identify each from a sample it passes</text>
 <rect x="340" y="38" width="180" height="104" fill="#fff8c5" stroke="#9a6700" stroke-dasharray="3 3" rx="3"/>
 <text x="430" y="156" text-anchor="middle" fill="#9a6700">window</text>
 <line x1="200" y1="52" x2="560" y2="52" stroke="#57606a" stroke-width="1.5"/>
@@ -19,14 +19,14 @@
 <text x="572" y="92" fill="#1a7f37">NA19240#1</text>
 <text x="572" y="110" fill="#1a7f37">HG002#2</text>
 <text x="572" y="128" fill="#1a7f37">HG01978#1</text>
-<text x="572" y="150" fill="#57606a">named at the first sample reached</text>
+<text x="572" y="150" fill="#57606a">identified at a sample</text>
 <text x="190" y="84" fill="#57606a" text-anchor="end">every walk crossing</text>
-<text x="190" y="98" fill="#57606a" text-anchor="end">the window, unnamed</text>
+<text x="190" y="98" fill="#57606a" text-anchor="end">the window, not yet identified</text>
 <circle cx="30" cy="180" r="4" fill="#1a7f37"/>
-<text x="40" y="184" fill="#57606a">sample: one every --interval bp along every path, with the path's name</text>
+<text x="40" y="184" fill="#57606a">sample: one every --interval bp along every path, recording the path</text>
 
-<text x="20" y="226" fill="#24292f" font-weight="bold">Anchored: read every name at the anchor, then walk only the chosen haplotypes</text>
-<text x="140" y="248" fill="#57606a" text-anchor="end">names read at the anchor</text>
+<text x="20" y="226" fill="#24292f" font-weight="bold">Anchored: read which haplotypes pass the anchor, then walk the chosen ones</text>
+<text x="140" y="248" fill="#57606a" text-anchor="end">read at the anchor</text>
 <rect x="340" y="250" width="180" height="112" fill="#fff8c5" stroke="#9a6700" stroke-dasharray="3 3" rx="3"/>
 <text x="430" y="376" text-anchor="middle" fill="#9a6700">window</text>
 <line x1="166" y1="264" x2="560" y2="264" stroke="#d0d7de" stroke-width="1.5"/>
@@ -49,7 +49,7 @@
 <text x="572" y="268" fill="#0969da">chosen: walked from the anchor</text>
 <text x="572" y="286" fill="#8c959f">the rest: never read</text>
 <text x="158" y="384" fill="#1a7f37" text-anchor="middle">anchor: every haplotype</text>
-<text x="158" y="398" fill="#1a7f37" text-anchor="middle">passing here, with its name</text>
+<text x="158" y="398" fill="#1a7f37" text-anchor="middle">passing here, recorded</text>
 <line x1="158" y1="418" x2="340" y2="418" stroke="#57606a" marker-start="url(#t)" marker-end="url(#t)"/>
 <text x="249" y="436" fill="#57606a" text-anchor="middle">under 1.5 × --anchor-spacing</text>
 </svg>
