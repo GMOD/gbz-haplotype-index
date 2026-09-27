@@ -2,7 +2,7 @@
 
 Upstream gbz-base prints each walk other than the query path as `unknown#N`.
 This package reports the sample, haplotype and contig of every walk, looked up
-in a haplotype index: a second SQLite file that the Rust program
+in a haplotype index: a sidecar SQLite file that the Rust program
 `gbz-haplotype-index` writes beside the graph database. The graph database stays
 as `gbz-base construct` wrote it, so an index also works with a database someone
 else hosts.
@@ -97,7 +97,7 @@ A query identifies walks by one of two routes, and picks the route itself. Both
 routes find the same haplotype for every walk. The tests compare the two, and
 check each result by walking back through the GBWT to the path's start.
 
-![The sampled route identifies every walk in the window from the samples it passes; the anchored route reads which haplotypes pass the anchor before the window and walks the chosen ones](img/naming-routes-layout.svg)
+![Walks come from the graph database, samples and anchors from the sidecar index. The sampled route extracts every walk in the window and identifies each at a sample; the anchored route reads who passes the anchor and walks only the chosen haplotypes](img/naming-routes-layout.svg)
 
 - **Sampled**: extract every walk in the window, then identify each from a
   sample it passes. The cost grows with every haplotype in the window.

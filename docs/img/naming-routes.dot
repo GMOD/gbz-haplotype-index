@@ -36,8 +36,8 @@ digraph namingroutes {
     color="#d0d7de"
     style="rounded"
     margin=10
-    s1 [label="extract every walk crossing the window\nnone yet identified"]
-    s2 [label="identify each from a sample it passes\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
+    s1 [label="extract every walk in the window\ngraph.gbz.db"]
+    s2 [label="identify each at a sample\nsidecar: HaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
     s3 [label="with keep: drop the rest"]
     s1 -> s2 -> s3
   }
@@ -52,10 +52,10 @@ digraph namingroutes {
     color="#d0d7de"
     style="rounded"
     margin=10
-    a1 [label="find the anchor node before the window\nHaplotypeAnchors" fillcolor="#dafbe1" color="#1a7f37"]
-    a2 [label="read the samples there: every\nhaplotype passing it\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
+    a1 [label="find the anchor before the window\nsidecar: HaplotypeAnchors" fillcolor="#dafbe1" color="#1a7f37"]
+    a2 [label="read who passes the anchor\nsidecar: HaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
     a2b [label="take the chosen haplotypes"]
-    a3 [label="walk each forward through the window"]
+    a3 [label="walk each through the window\ngraph.gbz.db"]
     a1 -> a2 -> a2b -> a3
   }
 
