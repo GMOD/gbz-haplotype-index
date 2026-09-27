@@ -49,9 +49,9 @@ graph.
   both orientations, with the path and its coordinate there.
 - `HaplotypeLengths`: the length of each path.
 - `HaplotypeAnchors`: one node every `--anchor-spacing` bp along each reference
-  path, chosen as the node most haplotypes pass through near that offset. Every
-  haplotype's visit to an anchor node is also a sample, so an anchor lists every
-  haplotype passing that point.
+  path. `gbz-haplotype-index` picks the node most haplotypes pass through near
+  that offset, and stores every haplotype's visit to it as a sample, so the
+  samples at an anchor list every haplotype passing that point.
 
 `open` rejects an index built with `--forward-only` with
 `ForwardOnlyIndexError`. About half the contigs in a graph like HPRC's are
@@ -76,8 +76,8 @@ haplotypes. If a walk fails, the query falls back to the sampled route, and
 
 ## Keeping a set of haplotypes
 
-`keepHaplotypes(predicate)`, which the `keep` option and `--keep SAMPLE[#HAP]`
-call, reduces a named subgraph to the reference, the accepted walks and the
+The `keep` option and `--keep SAMPLE[#HAP]` call `keepHaplotypes(predicate)`,
+which reduces a named subgraph to the reference, the accepted walks and the
 nodes they visit.
 
 The tests check every named fragment by walking backward through the GBWT to the
