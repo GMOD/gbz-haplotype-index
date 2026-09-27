@@ -17,8 +17,8 @@ digraph namingroutes {
   edge [color="#57606a" fontname="Helvetica" fontsize=9]
 
   query  [label="query a window of a reference path" fillcolor="#ddf4ff" color="#0969da"]
-  choose [label="does the query set\n{ keep: name => … }\nor --keep NAME?" shape=diamond style=filled margin="0.02,0.02"]
-  anchors [label="haplotypes: 'all',\nand the haplotype index\nhas anchor nodes?" shape=diamond style=filled margin="0.02,0.02"]
+  choose [label="does the query use\nthe keep option,\n{ keep: name => … }\nor --keep NAME?" shape=diamond style=filled margin="0.02,0.02"]
+  anchors [label="does the query leave\nhaplotypes at 'all'?" shape=diamond style=filled margin="0.02,0.02"]
   how    [label="db.getAlignmentsForRange(path, start, end, {\l  keep: name => name.sample === 'HG002',\l})\lgbz-base-query ... --keep HG002 --keep HG00733#1\l"
           shape=note fontname="Courier" fontsize=9 fillcolor="#fff8c5" color="#9a6700"]
   { rank=same; choose; how }
@@ -47,7 +47,7 @@ digraph namingroutes {
     margin=10
     s1 [label="extract every walk through the window"]
     s2 [label="identify each walk from a sample it passes\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
-    s3 [label="if keep is set, drop the walks\nwhere keep(name) is false" fillcolor="white"]
+    s3 [label="if the query uses the keep option,\ndrop the walks where keep(name) is false" fillcolor="white"]
     s1 -> s2 -> s3
   }
 

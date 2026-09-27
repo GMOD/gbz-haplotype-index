@@ -102,8 +102,8 @@ gbz-base-query ... --keep HG002 --keep HG00733#1
 
 The query then returns the reference, the haplotypes you kept and the nodes they
 visit. `--keep` takes a sample or `sample#haplotype` and can repeat. A query
-with `keep` needs the haplotype index, because that is where the library finds
-the haplotype of each walk.
+that uses the `keep` option needs the haplotype index, because the library looks
+up the haplotype of each walk in it.
 
 ## How a query identifies walks
 
@@ -121,13 +121,14 @@ the GBWT to the start of the path.
   window, which list every haplotype passing it, then follows the chosen walks.
   The cost grows with the number of haplotypes chosen.
 
-A query with `keep` takes the anchored route, and every other query takes the
-sampled route. Two exceptions send a query with `keep` down the sampled route as
-well, where the library drops the other haplotypes after identifying them: a
-`haplotypes` setting other than `all`, the default, and a haplotype index built
-with `--anchor-spacing 0`.
+A query that uses the `keep` option takes the anchored route, and every other
+query takes the sampled route. The library sends a query that uses the `keep`
+option down the sampled route when its `haplotypes` setting is other than
+`'all'`, the default, or when `gbz-haplotype-index` built the haplotype index
+with `--anchor-spacing 0`. On that route the library identifies every walk, then
+drops the haplotypes the predicate rejects.
 
-![A query that sets keep, leaves haplotypes at 'all' and has anchor nodes in the haplotype index takes the anchored route; every other query takes the sampled route](img/naming-routes.svg)
+![A query that uses the keep option and leaves haplotypes at 'all' takes the anchored route; every other query takes the sampled route](img/naming-routes.svg)
 
 The flowchart source is [naming-routes.dot](img/naming-routes.dot); the
 schematic is hand-written SVG.
@@ -138,7 +139,8 @@ schematic is hand-written SVG.
 2. `identifyPaths()` identifies each walk from a sample the walk passes inside
    the window. A walk with no sample there is followed past the window, for
    about four sampling intervals, and printed as `unknown#N` if that finds none.
-3. With `keep`, the query then drops the haplotypes not chosen.
+3. For a query that uses the `keep` option, the library then drops the
+   haplotypes the predicate rejects.
 
 ### Anchored
 
