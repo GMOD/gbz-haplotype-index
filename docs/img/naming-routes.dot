@@ -2,7 +2,7 @@
 // Regenerate with: dot -Tsvg docs/img/naming-routes.dot -o docs/img/naming-routes.svg
 // Palette matches dataflow.dot.
 //
-// Main paths only. The anchored route's two fallbacks (a kept haplotype
+// Main paths only. The anchored route's two fallbacks (a chosen haplotype
 // missing from the anchor, a walk that never reaches the window) are prose in
 // haplotype-index.md; drawn, their dashed edges crossed both clusters and
 // buried the choice the diagram exists to show.
@@ -18,6 +18,10 @@ digraph namingroutes {
 
   query  [label="query a window" fillcolor="#ddf4ff" color="#0969da"]
   choose [label="keep, and the index\nhas anchors?" shape=diamond style=filled margin="0.02,0.02"]
+  how    [label="keep: name => name.sample === 'HG002'\l--keep HG002 --keep HG00733#1\l"
+          shape=note fontname="Courier" fontsize=9 fillcolor="#fff8c5" color="#9a6700"]
+  { rank=same; choose; how }
+  choose -> how [style=dotted arrowhead=none]
   out    [label="named walks" fillcolor="#ddf4ff" color="#0969da"]
 
   query -> choose
@@ -39,7 +43,7 @@ digraph namingroutes {
   }
 
   subgraph cluster_anchored {
-    label="Anchored\ncost grows with\nthe haplotypes kept"
+    label="Anchored\ncost grows with\nthe haplotypes chosen"
     labelloc="t"
     labeljust="r"
     fontname="Helvetica"
@@ -48,10 +52,11 @@ digraph namingroutes {
     color="#d0d7de"
     style="rounded"
     margin=10
-    a1 [label="read the anchor before the window:\nevery haplotype there, named\nHaplotypeAnchors" fillcolor="#dafbe1" color="#1a7f37"]
-    a2 [label="keep the chosen ones"]
+    a1 [label="find the anchor node before the window\nHaplotypeAnchors" fillcolor="#dafbe1" color="#1a7f37"]
+    a2 [label="read the samples there: every\nhaplotype passing it, named\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
+    a2b [label="take the chosen haplotypes"]
     a3 [label="walk each forward through the window"]
-    a1 -> a2 -> a3
+    a1 -> a2 -> a2b -> a3
   }
 
   choose -> s1 [label=" no "]
