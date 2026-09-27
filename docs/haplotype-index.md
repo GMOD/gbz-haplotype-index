@@ -127,7 +127,7 @@ well, where the library drops the other haplotypes after identifying them: a
 `haplotypes` setting other than `all`, the default, and a haplotype index built
 with `--anchor-spacing 0`.
 
-![A query with keep takes the anchored route; every other query takes the sampled route](img/naming-routes.svg)
+![A query that sets keep, leaves haplotypes at 'all' and has anchor nodes in the haplotype index takes the anchored route; every other query takes the sampled route](img/naming-routes.svg)
 
 The flowchart source is [naming-routes.dot](img/naming-routes.dot); the
 schematic is hand-written SVG.

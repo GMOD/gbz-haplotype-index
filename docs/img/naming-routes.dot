@@ -18,6 +18,7 @@ digraph namingroutes {
 
   query  [label="query a window of a reference path" fillcolor="#ddf4ff" color="#0969da"]
   choose [label="does the query set\n{ keep: name => … }\nor --keep NAME?" shape=diamond style=filled margin="0.02,0.02"]
+  anchors [label="haplotypes: 'all',\nand the haplotype index\nhas anchor nodes?" shape=diamond style=filled margin="0.02,0.02"]
   how    [label="db.getAlignmentsForRange(path, start, end, {\l  keep: name => name.sample === 'HG002',\l})\lgbz-base-query ... --keep HG002 --keep HG00733#1\l"
           shape=note fontname="Courier" fontsize=9 fillcolor="#fff8c5" color="#9a6700"]
   { rank=same; choose; how }
@@ -51,9 +52,9 @@ digraph namingroutes {
   }
 
   subgraph cluster_anchored {
-    label="Anchored route\nthe cost grows with the number\nof haplotypes chosen"
+    label="Anchored route\nthe cost grows with\nthe haplotypes chosen"
     labelloc="t"
-    labeljust="r"
+    labeljust="l"
     fontname="Helvetica"
     fontsize=10
     fontcolor="#57606a"
@@ -68,7 +69,9 @@ digraph namingroutes {
   }
 
   choose -> s1 [label=" no "]
-  choose -> a1 [label=" yes "]
+  choose -> anchors [label=" yes "]
+  anchors -> s1 [label=" no " constraint=false]
+  anchors -> a1 [label=" yes "]
   s3 -> out
   a3 -> out
 }
