@@ -89,7 +89,7 @@ itself. Both return the same walks with the same names and differ only in speed.
 The tests check this, and check each name by walking back through the GBWT to
 the path's recorded start.
 
-<img src="img/naming-routes.svg" alt="How a query picks between the sampled and anchored routes" width="620">
+![How a query picks between the sampled and anchored routes](img/naming-routes.svg)
 
 ### What a sample is
 
@@ -117,7 +117,7 @@ that most haplotypes pass, and writes a sample for every haplotype's visit
 there. Reading the samples at an anchor node lists every haplotype passing that
 point, already named.
 
-<img src="img/naming-routes-layout.svg" alt="The sampled route names every walk in the window from samples; the anchored route walks only the kept haplotypes from the anchor before the window" width="740">
+![The sampled route names every walk in the window from samples; the anchored route walks only the kept haplotypes from the anchor before the window](img/naming-routes-layout.svg)
 
 [naming-routes.dot](img/naming-routes.dot) is the source of the diagram above
 the routes, and this one is hand-written SVG.
