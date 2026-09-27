@@ -7,10 +7,12 @@ in a haplotype index: a sidecar SQLite file that the Rust program
 as `gbz-base construct` wrote it, so a haplotype index also works with a
 database someone else hosts.
 
-The haplotype index is built once per graph and covers every haplotype in it.
-Each query then reads the haplotype index to identify the walks it returns, and
-a query can pass the `keep` option to choose which haplotypes it returns
-([below](#choosing-haplotypes-at-query-time-with-keep)).
+Two things happen at different times. Building the haplotype index happens once
+per graph, and the file covers every haplotype in the graph. Identifying walks
+happens on every query that reads the index. A caller who wants a subset of the
+haplotypes passes the `keep` option with the query
+([below](#querying-a-subset-of-the-haplotypes)); the index needs no rebuild for
+a different choice.
 
 ## Samples and anchors
 
@@ -24,9 +26,9 @@ positions along the way:
 - A **sample** records a position, the path through it, the orientation and the
   coordinate along that path. `gbz-haplotype-index` writes one every
   `--interval` bp along each path, in both orientations, plus one at the start
-  and end of each path. To identify a walk, a query follows it to the nearest
-  sample. A larger interval gives a smaller index and longer walks, the same
-  trade as the sampled suffix array in an FM-index.
+  and end of each path. To identify a walk, the library follows the walk to the
+  nearest sample. A larger interval gives a smaller index and longer walks, the
+  same trade as the sampled suffix array in an FM-index.
 - An **anchor** is a reference node that most haplotypes in the region visit,
   one every `--anchor-spacing` bp along each reference path. The haplotype index
   contains a sample for every visit to an anchor node, so the samples at that
@@ -78,11 +80,11 @@ gbz-base-query https://host/graph.gbz.db \
 `open` checks the path and node counts recorded in the haplotype index against
 the graph.
 
-## Choosing haplotypes at query time with keep
+## Querying a subset of the haplotypes
 
-`keep` is a query option, and the haplotype index is built once, before any
-query chooses. It stores the same samples and anchors whichever haplotypes
-queries later choose.
+`keep` is an option you pass with a query. The haplotype index plays no part in
+the choice: it stores the same samples and anchors whichever haplotypes you ask
+for later, so one build serves every query.
 
 A query returns every haplotype that passes through the window, 464 in each HPRC
 window we measured. To get a few of them, such as the two haplotypes of HG002,
@@ -98,15 +100,17 @@ const records = await db.getAlignmentsForRange('GRCh38#0#chr6', start, end, {
 gbz-base-query ... --keep HG002 --keep HG00733#1
 ```
 
-The query then returns the reference, the chosen haplotypes and the nodes they
+The query then returns the reference, the haplotypes you kept and the nodes they
 visit. `--keep` takes a sample or `sample#haplotype` and can repeat. A query
-with `keep` needs the haplotype index to find the haplotype of each walk.
+with `keep` needs the haplotype index, because that is where the library finds
+the haplotype of each walk.
 
 ## How a query identifies walks
 
-A query identifies walks by one of two routes, and picks the route itself. Both
-routes find the same haplotype for every walk. The tests compare the two, and
-check each result by walking back through the GBWT to the path's start.
+The library identifies walks by one of two routes and selects the route from the
+options passed with the query. Both routes find the same haplotype for every
+walk. The tests compare the two, and check each result by walking back through
+the GBWT to the start of the path.
 
 ![The sampled route extracts every walk through the window and follows each one to a sample. The anchored route reads the samples at one anchor node, which list every haplotype passing it, then follows the chosen walks through the window](img/naming-routes-layout.svg)
 
@@ -118,9 +122,10 @@ check each result by walking back through the GBWT to the path's start.
   The cost grows with the number of haplotypes chosen.
 
 A query with `keep` takes the anchored route, and every other query takes the
-sampled route. Two exceptions send a query with `keep` down the sampled route,
-which then drops the other haplotypes: a `haplotypes` setting other than `all`,
-the default, and a haplotype index built with `--anchor-spacing 0`.
+sampled route. Two exceptions send a query with `keep` down the sampled route as
+well, where the library drops the other haplotypes after identifying them: a
+`haplotypes` setting other than `all`, the default, and a haplotype index built
+with `--anchor-spacing 0`.
 
 ![A query with keep takes the anchored route; every other query takes the sampled route](img/naming-routes.svg)
 
@@ -156,4 +161,4 @@ schematic is hand-written SVG.
 
 With the pages cached, 8 HPRC haplotypes take 0.4-1 s by this route, against 2-9
 s for the sampled query of all 464
-([performance.md](performance.md#keeping-a-set-of-haplotypes)).
+([performance.md](performance.md#a-subset-of-the-haplotypes)).
