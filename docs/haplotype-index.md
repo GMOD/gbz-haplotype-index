@@ -83,24 +83,44 @@ which walk belongs to which sample.
 
 ## How walks get their names
 
-The GBWT stores each haplotype as an unlabeled walk: from any step it gives the
-next one, but not which sample the walk belongs to. The haplotype index supplies
-the names, and a query uses it by one of two routes, picking the route itself.
-Both return the same walks with the same names and differ only in speed. The
-tests check this, and check each name by walking back through the GBWT to the
-path's recorded start.
+The GBWT stores each haplotype as an unlabeled walk, and the haplotype index
+supplies the names. A query uses it by one of two routes, picking the route
+itself. Both return the same walks with the same names and differ only in speed.
+The tests check this, and check each name by walking back through the GBWT to
+the path's recorded start.
 
 <img src="img/naming-routes.svg" alt="How a query picks between the sampled and anchored routes" width="620">
 
-Each route leans on a different [table](#tables) of the index. A sample works
-like a mile marker: a walk that reaches one learns its name from it. An anchor
-works like a roll call: it lists every haplotype passing one reference node,
-already named.
+### What a sample is
+
+In the GBWT, each step of a walk is a position: a node, plus an offset saying
+which of the walks through that node this one is. From any position the GBWT
+gives the next one, so a walk can be followed step by step, but no position says
+which path it belongs to.
+
+A sample is one position with that answer written down. Each row of
+`HaplotypeSamples` maps a position to its path, the path's orientation and the
+path's coordinate there. A row for every step of every haplotype would make the
+index far larger than the graph, so `gbz-haplotype-index` writes one every
+`--interval` bp along each path (16 kb in the build above), in both
+orientations.
+
+To name a walk, a query follows it until it lands on a sampled position. The
+walk belongs to that sample's path, and its coordinate is the sample's, shifted
+by the bp walked to reach it. A larger interval makes the index smaller and the
+walks to the nearest sample longer. The idea is the same as the sampled suffix
+array in an FM-index.
+
+An anchor is a sample chosen for coverage instead of spacing. Every
+`--anchor-spacing` bp along the reference, `gbz-haplotype-index` picks a node
+that most haplotypes pass, and writes a sample for every haplotype's visit
+there. Reading the samples at an anchor node lists every haplotype passing that
+point, already named.
 
 <img src="img/naming-routes-layout.svg" alt="The sampled route names every walk in the window from samples; the anchored route walks only the kept haplotypes from the anchor before the window" width="740">
 
-[naming-routes.dot](img/naming-routes.dot) is the source of the first diagram,
-and the second is hand-written SVG.
+[naming-routes.dot](img/naming-routes.dot) is the source of the diagram above
+the routes, and this one is hand-written SVG.
 
 ### Sampled: extract every walk, then name each one
 
