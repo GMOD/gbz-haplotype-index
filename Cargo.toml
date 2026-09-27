@@ -2,8 +2,13 @@
 name = "gbz-haplotype-index"
 version = "0.1.0"
 edition = "2021"
-description = "Adds HaplotypeSamples and HaplotypeLengths tables to a gbz-base database so every haplotype path can be identified and placed"
+description = "Writes a companion haplotype index that names every walk in a gbz-base pangenome database"
 license = "MIT"
+repository = "https://github.com/GMOD/gbz-base-js"
+homepage = "https://github.com/GMOD/gbz-base-js/blob/main/docs/haplotype-index.md"
+readme = "README.md"
+keywords = ["pangenome", "gbz", "gbwt", "haplotype", "bioinformatics"]
+categories = ["science", "command-line-utilities"]
 
 [dependencies]
 gbz = "0.7"

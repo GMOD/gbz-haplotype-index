@@ -11,9 +11,11 @@ use std::process;
 use std::thread;
 use std::time::Instant;
 
-const USAGE: &str = "Usage: gbz-haplotype-index [options] graph.gbz graph.gbz.db
-       gbz-haplotype-index [options] --output index.db graph.gbz [graph.gbz.db]
-       gbz-haplotype-index [options] --from-db graph.gbz.db
+const USAGE: &str = "Usage: gbz-haplotype-index [options] graph.gbz [graph.gbz.db] index.db
+       gbz-haplotype-index [options] --from-db graph.gbz.db index.db
+
+Writes a haplotype index for a gbz-base database into a companion file,
+index.db. Give graph.gbz.db alongside graph.gbz to check that the two match.
 
 Walks every path in both orientations and writes a sample every --interval bp
 (default 4096) into table HaplotypeSamples, plus the path lengths into
@@ -29,11 +31,8 @@ orientations. A reader can then list every haplotype passing a reference
 position, with its own coordinate, from the rows at one node.
 --anchor-spacing 0 writes none.
 
-By default the tables are written into the database itself, replacing any
-existing ones. With --output FILE they are written into FILE as a standalone
-companion database that the reader opens beside the graph database; the
-companion records the graph's path and node counts so a mismatch is caught at
-open.
+The companion records the graph's path and node counts so the reader catches a
+mismatch at open.
 
 With --from-db the walk reads node records from the database itself, so the
 GBZ is not needed. Walking a GBZ uses --threads (default: all cores).
@@ -42,7 +41,7 @@ Options:
   --interval BP        bp between samples along a path (default 4096)
   --anchor-spacing BP  bp between anchors along a reference path (default 131072)
   --forward-only       sample only the forward orientation of each path
-  --output FILE        write a companion database instead of augmenting graph.gbz.db
+  --overwrite          replace index.db if it exists
   --threads N          walker threads for the GBZ route
 ";
 
@@ -51,7 +50,8 @@ const ANCHOR_RULE: &str = "HaplotypeAnchors names, per indexed reference path an
 struct Args {
     gbz: Option<String>,
     db: Option<String>,
-    output: Option<String>,
+    output: String,
+    overwrite: bool,
     interval: usize,
     anchor_spacing: usize,
     forward_only: bool,
@@ -64,7 +64,7 @@ fn parse_args() -> Args {
     let mut anchor_spacing = 131072;
     let mut forward_only = false;
     let mut from_db = false;
-    let mut output = None;
+    let mut overwrite = false;
     let mut threads = thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
     let mut iter = env::args().skip(1);
     while let Some(arg) = iter.next() {
@@ -90,9 +90,9 @@ fn parse_args() -> Args {
                     process::exit(1);
                 });
             }
-            "--output" => output = Some(iter.next().unwrap_or_default()),
             "--forward-only" => forward_only = true,
             "--from-db" => from_db = true,
+            "--overwrite" => overwrite = true,
             "-h" | "--help" => {
                 eprint!("{}", USAGE);
                 process::exit(0);
@@ -100,24 +100,19 @@ fn parse_args() -> Args {
             _ => positional.push(arg),
         }
     }
-    let valid = if from_db {
-        positional.len() == 1
-    } else if output.is_some() {
-        positional.len() == 1 || positional.len() == 2
-    } else {
-        positional.len() == 2
-    };
+    let valid = if from_db { positional.len() == 2 } else { positional.len() == 2 || positional.len() == 3 };
     if !valid || interval == 0 || threads == 0 {
         eprint!("{}", USAGE);
         process::exit(1);
     }
+    let output = positional.pop().unwrap();
     let (gbz, db) = if from_db {
         (None, positional.pop())
     } else {
         let gbz = positional.remove(0);
         (Some(gbz), positional.pop())
     };
-    Args { gbz, db, output, interval, anchor_spacing, forward_only, threads }
+    Args { gbz, db, output, overwrite, interval, anchor_spacing, forward_only, threads }
 }
 
 #[derive(Clone, Copy)]
@@ -468,6 +463,10 @@ CREATE TABLE HaplotypeLengths (
     path_handle INTEGER PRIMARY KEY,
     length INTEGER NOT NULL
 ) STRICT;
+CREATE TABLE Tags (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+) STRICT;
 CREATE TABLE HaplotypeAnchors (
     path_handle INTEGER NOT NULL,
     anchor_offset INTEGER NOT NULL,
@@ -476,7 +475,7 @@ CREATE TABLE HaplotypeAnchors (
     PRIMARY KEY (path_handle, anchor_offset)
 ) STRICT;";
 
-fn write(target: &str, standalone: bool, mut samples: Vec<Sample>, lengths: &[(usize, usize)], paths: usize, nodes: usize, anchors: &Anchors, args: &Args) {
+fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], paths: usize, nodes: usize, anchors: &Anchors, args: &Args) {
     let started = Instant::now();
     samples.sort_unstable_by_key(|s| (s.node_handle, s.node_offset));
     eprintln!("Sorted {} samples in {:.0} s", samples.len(), started.elapsed().as_secs_f64());
@@ -485,12 +484,7 @@ fn write(target: &str, standalone: bool, mut samples: Vec<Sample>, lengths: &[(u
         process::exit(1);
     });
     connection.execute_batch("PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;").unwrap();
-    let mut setup = String::from("DROP TABLE IF EXISTS HaplotypeSamples; DROP TABLE IF EXISTS HaplotypeLengths; DROP TABLE IF EXISTS HaplotypeAnchors; ");
-    if standalone {
-        setup.push_str("CREATE TABLE IF NOT EXISTS Tags (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT; ");
-    }
-    setup.push_str(SCHEMA);
-    connection.execute_batch(&setup).unwrap();
+    connection.execute_batch(SCHEMA).unwrap();
     let transaction = connection.transaction().unwrap();
     {
         let mut write_sample = transaction
@@ -513,21 +507,20 @@ fn write(target: &str, standalone: bool, mut samples: Vec<Sample>, lengths: &[(u
         for a in rows {
             write_anchor.execute(params![a.path_handle as i64, a.anchor_offset as i64, a.node_handle as i64, a.path_offset as i64]).unwrap();
         }
-        let mut write_tag = transaction.prepare("INSERT OR REPLACE INTO Tags(key, value) VALUES (?1, ?2)").unwrap();
-        let mut drop_tag = transaction.prepare("DELETE FROM Tags WHERE key = ?1").unwrap();
+        let mut write_tag = transaction.prepare("INSERT INTO Tags(key, value) VALUES (?1, ?2)").unwrap();
         write_tag.execute(params!["haplotype_index_interval", args.interval.to_string()]).unwrap();
         write_tag.execute(params!["haplotype_index_orientations", if args.forward_only { "forward" } else { "both" }]).unwrap();
         write_tag.execute(params!["haplotype_index_paths", paths.to_string()]).unwrap();
         write_tag.execute(params!["haplotype_index_nodes", nodes.to_string()]).unwrap();
-        let anchor_tags = ["haplotype_index_anchor_spacing", "haplotype_index_anchor_rule", "haplotype_index_anchor_paths", "haplotype_index_anchor_nodes"];
         if args.anchor_spacing > 0 {
-            let values = [args.anchor_spacing.to_string(), ANCHOR_RULE.to_string(), anchors.reference_paths.to_string(), anchors.nodes.len().to_string()];
-            for (key, value) in anchor_tags.iter().zip(values.iter()) {
+            let anchor_tags = [
+                ("haplotype_index_anchor_spacing", args.anchor_spacing.to_string()),
+                ("haplotype_index_anchor_rule", ANCHOR_RULE.to_string()),
+                ("haplotype_index_anchor_paths", anchors.reference_paths.to_string()),
+                ("haplotype_index_anchor_nodes", anchors.nodes.len().to_string()),
+            ];
+            for (key, value) in anchor_tags.iter() {
                 write_tag.execute(params![key, value]).unwrap();
-            }
-        } else {
-            for key in anchor_tags.iter() {
-                drop_tag.execute(params![key]).unwrap();
             }
         }
     }
@@ -568,6 +561,16 @@ fn walk_db(db: &str, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>, Anchors)
 
 fn main() {
     let args = parse_args();
+    if std::path::Path::new(&args.output).exists() {
+        if !args.overwrite {
+            eprintln!("{} exists; pass --overwrite to replace it", args.output);
+            process::exit(1);
+        }
+        std::fs::remove_file(&args.output).unwrap_or_else(|e| {
+            eprintln!("Cannot remove {}: {}", args.output, e);
+            process::exit(1);
+        });
+    }
     let (samples, lengths, paths, nodes, anchors) = match &args.gbz {
         Some(gbz) => {
             let started = Instant::now();
@@ -606,11 +609,7 @@ fn main() {
             (samples, lengths, paths, nodes, anchors)
         }
     };
-    match (&args.output, &args.db) {
-        (Some(output), _) => write(output, true, samples, &lengths, paths, nodes, &anchors, &args),
-        (None, Some(db)) => write(db, false, samples, &lengths, paths, nodes, &anchors, &args),
-        (None, None) => unreachable!(),
-    }
+    write(&args.output, samples, &lengths, paths, nodes, &anchors, &args);
 }
 
 #[cfg(test)]
@@ -622,7 +621,7 @@ mod tests {
     }
 
     fn args(interval: usize, anchor_spacing: usize) -> Args {
-        Args { gbz: None, db: Some(split_contig()), output: None, interval, anchor_spacing, forward_only: false, threads: 1 }
+        Args { gbz: None, db: Some(split_contig()), output: String::new(), overwrite: false, interval, anchor_spacing, forward_only: false, threads: 1 }
     }
 
     fn forward_nodes(source: &dyn PathSource, path_handle: usize) -> Vec<(usize, usize, usize)> {

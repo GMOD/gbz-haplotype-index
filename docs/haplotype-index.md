@@ -1,30 +1,31 @@
 # Naming haplotypes
 
 Upstream gbz-base names only the query path and prints every other walk as
-`unknown#N`. This package names the walks using a haplotype index, a set of
-extra tables that the Rust program `gbz-haplotype-index` writes into the
-database or into a separate companion file. Build the index once per graph, then
-pass it to the library or the command line.
+`unknown#N`. This package names the walks using a haplotype index, a companion
+SQLite file that the Rust program `gbz-haplotype-index` writes beside the graph
+database. Build the index once per graph, then pass it to the library or the
+command line.
+
+The index lives in its own file so the graph database stays exactly what
+`gbz-base construct` wrote, and so an index can name the walks of a database
+someone else hosts. Its tables could later move into the gbz-base format itself.
 
 ## Building the index
 
-The source is in `tools/haplotype-index/` and needs a Rust toolchain.
-
 ```bash
-cd tools/haplotype-index && cargo build --release
+cargo install gbz-haplotype-index
 
-# into the database
-./target/release/gbz-haplotype-index --interval 4096 --anchor-spacing 131072 graph.gbz graph.gbz.db
+gbz-haplotype-index --interval 16384 --anchor-spacing 131072 graph.gbz graph.haplotype-index.db
 
-# into the database, reading paths from the database itself
-./target/release/gbz-haplotype-index --interval 4096 --anchor-spacing 131072 --from-db graph.gbz.db
-
-# into a companion file
-./target/release/gbz-haplotype-index --interval 16384 --anchor-spacing 131072 --output graph.haplotype-index.db graph.gbz
+# without the GBZ, reading paths from the database
+gbz-haplotype-index --interval 16384 --anchor-spacing 131072 --from-db graph.gbz.db graph.haplotype-index.db
 ```
 
-A companion file names the walks of a database someone else hosts. In the
-library, open the two together:
+Give `graph.gbz.db` before the index path to check that it matches the GBZ.
+`--overwrite` replaces an existing index. The source is in
+`tools/haplotype-index/`.
+
+In the library, open the graph and the index together:
 
 ```ts
 const db = await GBZBase.open(new RemoteFile(graphUrl), {
