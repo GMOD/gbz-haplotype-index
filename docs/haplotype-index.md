@@ -34,6 +34,8 @@ positions along the way:
   contains a sample for every visit to an anchor node, so the samples at that
   node list every haplotype passing it.
 
+![graph.gbz.db lists the walks at each node by rank and names each path at the start of its walk. The haplotype index adds a sample every --interval bp that maps a position to a path, so a query names a walk from the next sample along it](img/haplotype-samples.svg)
+
 Table `HaplotypeSamples` contains the samples, `HaplotypeAnchors` lists the
 anchor nodes, and `HaplotypeLengths` lists the length of each path.
 
@@ -81,10 +83,6 @@ gbz-base-query https://host/graph.gbz.db \
 the graph.
 
 ## Querying a subset of the haplotypes
-
-`keep` is an option you pass with a query. The haplotype index plays no part in
-the choice: it stores the same samples and anchors whichever haplotypes you ask
-for later, so one build serves every query.
 
 A query returns every haplotype that passes through the window, 464 in each HPRC
 window we measured. To get a few of them, such as the two haplotypes of HG002,

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 560" font-family="Helvetica, Arial, sans-serif" font-size="11">
+<defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#0969da"/></marker></defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="20" y="28" fill="#24292f" font-weight="bold">What graph.gbz.db stores</text>
+<text x="20" y="46" fill="#24292f" >At each node, graph.gbz.db lists the walks through it in rank order, and for each rank the node and rank the walk visits next.</text>
+<text x="20" y="62" fill="#24292f" >A position is a node and a rank. The GBWT gives every visit to a node a distinct rank, so one position belongs to exactly one walk.</text>
+<rect x="80" y="92" width="70" height="36" fill="#f6f8fa" stroke="#57606a" rx="4"/>
+<text x="115" y="86" fill="#57606a" text-anchor="middle" font-size="10">node 11</text>
+<rect x="80" y="152" width="70" height="36" fill="#f6f8fa" stroke="#57606a" rx="4"/>
+<text x="115" y="146" fill="#57606a" text-anchor="middle" font-size="10">node 12</text>
+<rect x="610" y="92" width="70" height="36" fill="#f6f8fa" stroke="#57606a" rx="4"/>
+<text x="645" y="86" fill="#57606a" text-anchor="middle" font-size="10">node 14</text>
+<rect x="610" y="152" width="70" height="36" fill="#f6f8fa" stroke="#57606a" rx="4"/>
+<text x="645" y="146" fill="#57606a" text-anchor="middle" font-size="10">node 15</text>
+<rect x="330" y="84" width="110" height="112" fill="#f6f8fa" stroke="#57606a" rx="4"/>
+<text x="385" y="78" fill="#57606a" text-anchor="middle" font-size="10">node 13</text>
+<path d="M150,110 C240,110 240,100 330,100" fill="none" stroke="#57606a" stroke-width="1.5"/>
+<path d="M440,100 C525,100 525,110 610,110" fill="none" stroke="#57606a" stroke-width="1.5"/>
+<text x="385" y="104" fill="#24292f" text-anchor="middle" font-size="10">rank 0</text>
+<path d="M150,170 C240,170 240,124 330,124" fill="none" stroke="#57606a" stroke-width="1.5"/>
+<path d="M440,124 C525,124 525,110 610,110" fill="none" stroke="#57606a" stroke-width="1.5"/>
+<text x="385" y="128" fill="#24292f" text-anchor="middle" font-size="10">rank 1</text>
+<path d="M150,110 C240,110 240,148 330,148" fill="none" stroke="#0969da" stroke-width="2.5"/>
+<path d="M440,148 C525,148 525,170 610,170" fill="none" stroke="#0969da" stroke-width="2.5"/>
+<text x="385" y="152" fill="#0969da" text-anchor="middle" font-size="10" font-weight="bold">rank 2</text>
+<path d="M150,170 C240,170 240,172 330,172" fill="none" stroke="#57606a" stroke-width="1.5"/>
+<path d="M440,172 C525,172 525,170 610,170" fill="none" stroke="#57606a" stroke-width="1.5"/>
+<text x="385" y="176" fill="#24292f" text-anchor="middle" font-size="10">rank 3</text>
+<text x="20" y="222" fill="#24292f" >The blue walk occupies rank 2 at node 13, so the position (13, 2) marks that one visit. The Paths table in graph.gbz.db names each path</text>
+<text x="20" y="238" fill="#24292f" >at the first position of its walk, which can be a whole contig away from the window. Upstream gbz-base prints such a walk as unknown#N.</text>
+<line x1="20" y1="258" x2="740" y2="258" stroke="#d0d7de"/>
+<text x="20" y="284" fill="#24292f" font-weight="bold">What the sidecar graph.haplotype-index.db adds</text>
+<text x="20" y="302" fill="#24292f" >At build time, gbz-haplotype-index walks every path in both orientations and writes a sample every --interval bp into a separate file, leaving</text>
+<text x="20" y="318" fill="#24292f" >graph.gbz.db unchanged. A sample is a row in table HaplotypeSamples that maps one position to a path, an orientation and an offset along that path.</text>
+<rect x="400" y="350" width="180" height="44" fill="#fff8c5" stroke="#9a6700" stroke-dasharray="3 3" rx="3"/>
+<line x1="40" y1="372" x2="720" y2="372" stroke="#57606a" stroke-width="2" />
+<circle cx="40" cy="372" r="5" fill="#ffffff" stroke="#57606a" stroke-width="1.5"/>
+<text x="40" y="358" fill="#57606a" font-size="10">start of HG002#1#chr6, named in Paths</text>
+<text x="720" y="358" fill="#57606a" font-size="10" text-anchor="end">end</text>
+<circle cx="80" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="124" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="168" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="212" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="256" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="300" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="344" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="388" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="432" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="476" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="520" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="564" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="608" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="652" cy="372" r="4" fill="#1a7f37"/>
+<circle cx="696" cy="372" r="4" fill="#1a7f37"/>
+<text x="490.0" y="408" fill="#9a6700" text-anchor="middle">query window</text>
+<line x1="404" y1="364" x2="466" y2="364" stroke="#0969da" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="20" y="432" fill="#24292f" >At query time, the library follows each walk in the window forward to the next sample, at most --interval bp along, and reads that row.</text>
+<rect x="20" y="444" width="720" height="50" fill="#fff8c5" stroke="#9a6700" rx="3"/>
+<text x="28" y="460" fill="#24292f" font-family="Courier, monospace" font-size="10">HaplotypeSamples  (node_handle, node_offset) → path_handle, orientation, path_offset</text>
+<text x="28" y="474" fill="#24292f" font-family="Courier, monospace" font-size="10" xml:space="preserve">                  (13, 2)                   → 5021,        forward,     30,012,288</text>
+<text x="28" y="488" fill="#24292f" font-family="Courier, monospace" font-size="10" xml:space="preserve">Paths in graph.gbz.db    5021 → HG002#1#chr6</text>
+<text x="20" y="516" fill="#57606a" font-size="10">The sample and the walk share the key (node_handle, node_offset), so the row names exactly one walk. The node and rank above are illustrative.</text>
+<circle cx="26" cy="540" r="4" fill="#1a7f37"/>
+<text x="38" y="544" fill="#1a7f37" font-size="10">sample, a row in HaplotypeSamples in graph.haplotype-index.db</text>
+<line x1="390" y1="540" x2="414" y2="540" stroke="#0969da" stroke-width="2" />
+<text x="422" y="544" fill="#0969da" font-size="10">the walk followed at query time</text>
+</svg>
