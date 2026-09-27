@@ -63,7 +63,7 @@ reverse-orientation samples.
 ## Keeping a set of haplotypes
 
 A pangenome graph like HPRC's holds hundreds of haplotypes, and a query returns
-every one that passes through the window: 464 walks for a typical HPRC region.
+every one that passes through the window, 464 in each HPRC window we measured.
 Often you only care about a few, such as the two haplotypes of one sample, or a
 handful you want to compare against the reference.
 
@@ -90,22 +90,22 @@ Both return the same walks with the same names and differ only in speed. The
 tests check this, and check each name by walking back through the GBWT to the
 path's recorded start.
 
-The two routes use the index's two kinds of rows:
+<img src="img/naming-routes.svg" alt="How a query picks between the sampled and anchored routes" width="620">
 
-- **Samples** work like mile markers. Every `--interval` bp along every
-  haplotype, a row says which path owns that GBWT step and at what coordinate. A
-  walk that reaches a marker gets that marker's name.
-- **Anchors** work like a roll call. Every `--anchor-spacing` bp along the
-  reference, the index picks a node most haplotypes pass and stores every
-  haplotype's step there, named.
+Each route leans on a different [table](#tables) of the index. A sample works
+like a mile marker: a walk that reaches one learns its name from it. An anchor
+works like a roll call: it lists every haplotype passing one reference node,
+already named.
 
-<img src="img/naming-routes.svg" alt="The sampled and anchored naming routes" width="620">
+<img src="img/naming-routes-layout.svg" alt="The sampled route names every walk in the window from samples; the anchored route walks only the kept haplotypes from the anchor before the window" width="740">
 
-The source is [naming-routes.dot](img/naming-routes.dot).
+[naming-routes.dot](img/naming-routes.dot) is the source of the first diagram,
+and the second is hand-written SVG.
 
 ### Sampled: extract every walk, then name each one
 
-The default route, and the only one without `keep`.
+A query without `keep` always takes this route, and so does a `keep` query on an
+index without anchors.
 
 1. The query extracts every walk crossing the window's nodes, all of them
    unlabeled.
@@ -116,12 +116,12 @@ The default route, and the only one without `keep`.
 4. With `keep`, the query drops the unwanted haplotypes only after naming them
    all.
 
-The cost grows with every haplotype in the window, so keeping 2 of HPRC's 464
-costs nearly as much as keeping all of them.
+The cost grows with every haplotype in the window, however few `keep` asks for.
 
 ### Anchored: start from the names, walk only the kept ones
 
-Used for a `keep` query when the index was built with `--anchor-spacing`.
+A `keep` query takes this route when the index was built with
+`--anchor-spacing`.
 
 1. The query finds the anchor at or before the window's start, up to one spacing
    (131 kb) upstream, and walks the reference from there to the window.

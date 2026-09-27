@@ -46,7 +46,7 @@ digraph namingroutes {
     a2 [label="read every haplotype at the anchor, named\nHaplotypeAnchors" fillcolor="#dafbe1" color="#1a7f37"]
     a3 [label="keep the chosen rows"]
     a4 [label="walk each forward through the window"]
-    a5 [label="contig starts in the window:\nfind it from a sample, walk forward" style="dashed,rounded,filled"]
+    a5 [label="contig starts in the window\nor skips the anchor: found from a sample" style="dashed,rounded,filled"]
     a1 -> a2 -> a3 -> a4
     a3 -> a5 [style=dashed label=" missing from\l the anchor\l"]
   }
