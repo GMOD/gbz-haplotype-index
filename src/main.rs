@@ -22,9 +22,10 @@ Walks every path in both orientations and writes a sample every --interval bp
 HaplotypeLengths. The path start and end are always sampled.
 
 Anchors: along every reference path (the paths gbz-base indexes for random
-access), one anchor node is chosen per multiple k of --anchor-spacing: the
-path's first node for k = 0, and for k >= 1 the node with the most GBWT
-positions among those overlapping the half spacing before k * spacing, so it is
+access), or only those of one sample with --anchor-sample, one anchor node is
+chosen per multiple k of --anchor-spacing: the path's first node for k = 0, and
+for k >= 1 the node with the most GBWT positions among those overlapping the
+half spacing before k * spacing, the one nearest k * spacing on a tie, so it is
 one most haplotypes of the region visit. Table HaplotypeAnchors records each
 choice, and every path visit through an anchor node is sampled, in both
 orientations. A reader can then list every haplotype passing a reference
@@ -39,13 +40,14 @@ GBZ is not needed. Walking a GBZ uses --threads (default: all cores).
 
 Options:
   --interval BP        bp between samples along a path (default 4096)
-  --anchor-spacing BP  bp between anchors along a reference path (default 131072)
+  --anchor-spacing BP  bp between anchors along a reference path (default 32768)
+  --anchor-sample NAME anchor only the reference paths of this sample
   --forward-only       sample only the forward orientation of each path
   --overwrite          replace index.db if it exists
   --threads N          walker threads for the GBZ route
 ";
 
-const ANCHOR_RULE: &str = "HaplotypeAnchors names, per indexed reference path and multiple k of the spacing, the path's first node for k = 0 and for k >= 1 the node with the most GBWT positions among those overlapping [k * spacing - spacing / 2, k * spacing), the first on a tie; HaplotypeSamples holds every GBWT position at those nodes, in both orientations";
+const ANCHOR_RULE: &str = "HaplotypeAnchors names, per indexed reference path and multiple k of the spacing, the path's first node for k = 0 and for k >= 1 the node with the most GBWT positions among those overlapping [k * spacing - spacing / 2, k * spacing), the last on a tie; HaplotypeSamples holds every GBWT position at those nodes, in both orientations";
 
 struct Args {
     gbz: Option<String>,
@@ -54,6 +56,7 @@ struct Args {
     overwrite: bool,
     interval: usize,
     anchor_spacing: usize,
+    anchor_sample: Option<String>,
     forward_only: bool,
     threads: usize,
 }
@@ -61,7 +64,8 @@ struct Args {
 fn parse_args() -> Args {
     let mut positional = Vec::new();
     let mut interval = 4096;
-    let mut anchor_spacing = 131072;
+    let mut anchor_spacing = 32768;
+    let mut anchor_sample = None;
     let mut forward_only = false;
     let mut from_db = false;
     let mut overwrite = false;
@@ -82,6 +86,12 @@ fn parse_args() -> Args {
                     eprintln!("Invalid --anchor-spacing: {}", value);
                     process::exit(1);
                 });
+            }
+            "--anchor-sample" => {
+                anchor_sample = Some(iter.next().unwrap_or_else(|| {
+                    eprintln!("--anchor-sample needs a sample name");
+                    process::exit(1);
+                }));
             }
             "--threads" => {
                 let value = iter.next().unwrap_or_default();
@@ -112,7 +122,7 @@ fn parse_args() -> Args {
         let gbz = positional.remove(0);
         (Some(gbz), positional.pop())
     };
-    Args { gbz, db, output, overwrite, interval, anchor_spacing, forward_only, threads }
+    Args { gbz, db, output, overwrite, interval, anchor_spacing, anchor_sample, forward_only, threads }
 }
 
 #[derive(Clone, Copy)]
@@ -164,7 +174,7 @@ trait PathSource {
     fn step(&self, pos: Pos) -> (usize, Option<Pos>);
     fn node_len(&self, handle: usize) -> usize;
     fn visits(&self, handle: usize) -> usize;
-    fn indexed_paths(&self) -> Vec<usize>;
+    fn indexed_paths(&self, sample: Option<&str>) -> Vec<usize>;
     fn max_node_id(&self) -> usize;
 }
 
@@ -196,13 +206,14 @@ impl PathSource for GbzSource<'_> {
         bwt.record(index.node_to_record(handle)).map_or(0, |record| record.len())
     }
 
-    fn indexed_paths(&self) -> Vec<usize> {
+    fn indexed_paths(&self, sample: Option<&str>) -> Vec<usize> {
         let reference_samples: BTreeSet<usize> = self.graph.reference_sample_ids(true).into_iter().collect();
         match self.graph.metadata() {
             Some(metadata) => metadata
                 .path_iter()
                 .enumerate()
                 .filter(|(_, name)| reference_samples.contains(&name.sample()))
+                .filter(|(_, name)| sample.map_or(true, |s| metadata.sample_name(name.sample()) == s))
                 .map(|(handle, _)| handle)
                 .collect(),
             None => Vec::new(),
@@ -239,9 +250,15 @@ impl PathSource for DbSource<'_> {
         self.interface.borrow_mut().get_record(handle).unwrap().map_or(0, |record| record.to_gbwt_record().len())
     }
 
-    fn indexed_paths(&self) -> Vec<usize> {
+    fn indexed_paths(&self, sample: Option<&str>) -> Vec<usize> {
         (0..self.paths)
-            .filter(|&handle| self.interface.borrow_mut().get_path(handle).unwrap().map_or(false, |path| path.is_indexed))
+            .filter(|&handle| {
+                self.interface
+                    .borrow_mut()
+                    .get_path(handle)
+                    .unwrap()
+                    .map_or(false, |path| path.is_indexed && sample.map_or(true, |s| path.name.sample == s))
+            })
             .collect()
     }
 
@@ -252,10 +269,11 @@ impl PathSource for DbSource<'_> {
 
 // One anchor per multiple k of the spacing along a reference path: the first
 // node for k = 0, and for k >= 1 the node with the most GBWT positions among
-// those overlapping [k * spacing - spacing / 2, k * spacing), the first on a
+// those overlapping [k * spacing - spacing / 2, k * spacing), the last on a
 // tie. A window starting at or past k * spacing has that anchor before it, and
 // most haplotypes of the region visit it, where the node that happens to
-// contain the multiple can be a rare allele.
+// contain the multiple can be a rare allele. Most reference nodes tie, so the
+// last one keeps the anchor close to the multiple and the walk from it short.
 fn mark_anchors(source: &dyn PathSource, path_handle: usize, spacing: usize, anchors: &mut Vec<Anchor>) {
     let half = spacing / 2;
     let mut pos = source.start(path_handle, Orientation::Forward);
@@ -278,7 +296,7 @@ fn mark_anchors(source: &dyn PathSource, path_handle: usize, spacing: usize, anc
                 break;
             }
             let count = *visits.get_or_insert_with(|| source.visits(current.node));
-            if best.map_or(true, |(most, _, _)| count > most) {
+            if best.map_or(true, |(most, _, _)| count >= most) {
                 best = Some((count, current, offset));
             }
             if end >= target {
@@ -393,10 +411,19 @@ struct Anchors {
     reference_paths: usize,
 }
 
+fn anchored_paths(source: &dyn PathSource, args: &Args) -> Vec<usize> {
+    let paths = source.indexed_paths(args.anchor_sample.as_deref());
+    if let (Some(sample), true, true) = (&args.anchor_sample, paths.is_empty(), args.anchor_spacing > 0) {
+        eprintln!("No reference path belongs to sample {}; drop --anchor-sample or name a reference sample", sample);
+        process::exit(1);
+    }
+    paths
+}
+
 fn anchors_gbz(graph: &GBZ, args: &Args) -> Anchors {
     let started = Instant::now();
     let source = GbzSource { graph };
-    let reference_paths = source.indexed_paths();
+    let reference_paths = anchored_paths(&source, args);
     let chunk = (reference_paths.len() + args.threads - 1) / args.threads.max(1);
     let mut rows = Vec::new();
     if args.anchor_spacing > 0 && chunk > 0 {
@@ -518,6 +545,7 @@ fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], pat
                 ("haplotype_index_anchor_rule", ANCHOR_RULE.to_string()),
                 ("haplotype_index_anchor_paths", anchors.reference_paths.to_string()),
                 ("haplotype_index_anchor_nodes", anchors.nodes.len().to_string()),
+                ("haplotype_index_anchor_sample", args.anchor_sample.clone().unwrap_or_default()),
             ];
             for (key, value) in anchor_tags.iter() {
                 write_tag.execute(params![key, value]).unwrap();
@@ -551,7 +579,7 @@ fn walk_db(db: &str, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>, Anchors)
     });
     let interface = GraphInterface::new(&database).unwrap();
     let source = DbSource { interface: std::cell::RefCell::new(interface), paths, max_node_id };
-    let reference_paths = source.indexed_paths();
+    let reference_paths = anchored_paths(&source, args);
     let rows = anchor_rows(&source, &reference_paths, args.anchor_spacing);
     let nodes = anchor_set(&source, &rows);
     eprintln!("Chose {} anchors on {} distinct nodes over {} reference paths at {} bp spacing", rows.len(), nodes.len(), reference_paths.len(), args.anchor_spacing);
@@ -621,7 +649,7 @@ mod tests {
     }
 
     fn args(interval: usize, anchor_spacing: usize) -> Args {
-        Args { gbz: None, db: Some(split_contig()), output: String::new(), overwrite: false, interval, anchor_spacing, forward_only: false, threads: 1 }
+        Args { gbz: None, db: Some(split_contig()), output: String::new(), overwrite: false, interval, anchor_spacing, anchor_sample: None, forward_only: false, threads: 1 }
     }
 
     fn forward_nodes(source: &dyn PathSource, path_handle: usize) -> Vec<(usize, usize, usize)> {
@@ -651,13 +679,13 @@ mod tests {
     }
 
     #[test]
-    fn every_reference_path_gets_its_first_node_and_the_most_visited_node_before_each_multiple() {
+    fn every_reference_path_gets_its_first_node_and_the_most_visited_node_nearest_each_multiple() {
         let spacing = 300;
         let (_, _, anchors) = walk_db(&split_contig(), &args(200, spacing));
         assert_eq!(anchors.reference_paths, 2);
         let checked = with_source(|source| {
             let mut checked = 0;
-            for &path_handle in source.indexed_paths().iter() {
+            for &path_handle in source.indexed_paths(None).iter() {
                 let nodes = forward_nodes(source, path_handle);
                 let length: usize = nodes.iter().map(|n| n.2).sum();
                 let first = anchors.rows.iter().find(|a| a.path_handle as usize == path_handle && a.anchor_offset == 0).unwrap();
@@ -672,7 +700,7 @@ mod tests {
                     let (handle, start, _) = overlapping.iter().find(|(handle, _, _)| *handle == chosen.node_handle as usize).unwrap();
                     assert_eq!(chosen.path_offset as usize, *start);
                     assert_eq!(source.visits(*handle), most);
-                    assert!(overlapping.iter().take_while(|(h, _, _)| h != handle).all(|(h, _, _)| source.visits(*h) < most));
+                    assert!(overlapping.iter().rev().take_while(|(h, _, _)| h != handle).all(|(h, _, _)| source.visits(*h) < most));
                     checked += 1;
                     k += 1;
                 }
@@ -707,6 +735,16 @@ mod tests {
         keys.sort_unstable();
         keys.dedup();
         assert_eq!(keys.len(), before);
+    }
+
+    #[test]
+    fn an_anchor_sample_keeps_the_anchors_of_that_samples_paths() {
+        let mut only = args(200, 300);
+        only.anchor_sample = Some("GRCh38".to_string());
+        let (_, _, anchors) = walk_db(&split_contig(), &only);
+        let (_, _, all) = walk_db(&split_contig(), &args(200, 300));
+        assert_eq!(anchors.reference_paths, 2);
+        assert_eq!(anchors.rows.len(), all.rows.len());
     }
 
     #[test]
