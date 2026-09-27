@@ -1,13 +1,16 @@
 # Naming haplotypes
 
 Upstream gbz-base prints each walk in a window as `unknown#N`. This package
-names the walks using a haplotype index: extra tables that the Rust tool in
-`tools/haplotype-index/` writes into the database, or into a separate companion
-file.
+names the walks using a haplotype index, a set of extra tables that the Rust
+program `gbz-haplotype-index` writes into the database or into a separate
+companion file. Build the index once per graph, then pass it to the library or
+the command line.
 
 ## Building the index
 
-```
+The source is in `tools/haplotype-index/` and needs a Rust toolchain.
+
+```bash
 cd tools/haplotype-index && cargo build --release
 
 # into the database
@@ -20,7 +23,8 @@ cd tools/haplotype-index && cargo build --release
 ./target/release/gbz-haplotype-index --interval 16384 --anchor-spacing 131072 --output graph.haplotype-index.db graph.gbz
 ```
 
-A companion adds names to a database someone else hosts. Open the two together:
+A companion file names the walks of a database someone else hosts. In the
+library, open the two together:
 
 ```ts
 const db = await GBZBase.open(new RemoteFile(graphUrl), {
@@ -28,12 +32,16 @@ const db = await GBZBase.open(new RemoteFile(graphUrl), {
 })
 ```
 
-```
-gbz-base-query https://host/graph.gbz.db --haplotype-index https://host/graph.haplotype-index.db ...
+On the command line, pass `--haplotype-index`:
+
+```bash
+gbz-base-query https://host/graph.gbz.db \
+  --haplotype-index https://host/graph.haplotype-index.db ...
 ```
 
-For the 10 GB HPRC v2.1 GRCh38 database, the companion is 7.9 GB. It records the
-graph's path and node counts, and `open` checks them against the graph.
+For the 10 GB HPRC v2.1 GRCh38 database, the companion is 7.9 GB. The companion
+records the graph's path and node counts, and `open` checks them against the
+graph.
 
 ## Tables
 
@@ -53,16 +61,17 @@ reverse-orientation samples.
 ## Two ways to name walks
 
 **Sampled.** `identifyPaths()` reads the samples on the window's nodes, links
-each haplotype's fragments into chains, and names each chain from a sample. A
-chain with no sample in the window is followed past it, up to four sampling
-intervals. The range queries run this for you; the lower-level queries leave it
-to you, and the CLI runs it with `--resolve` or `--alignments`.
+each haplotype's fragments into chains, and names each chain from a sample. When
+a chain has no sample in the window, `identifyPaths()` follows it past the
+window, up to four sampling intervals. The range queries call `identifyPaths()`
+for you, and the lower-level queries leave the call to you. On the command line,
+`--resolve` and `--alignments` run it.
 
 **Anchored.** A query with `keep` on a companion with anchors reads the samples
 at the anchor before the window and walks only the chosen haplotypes forward
 from there through the window. The cost scales with the number of chosen
 haplotypes. If a walk fails, the query falls back to the sampled route, and
-`--stats` reports the reason.
+`gbz-base-query --stats` reports the reason.
 [performance.md](performance.md#keeping-a-set-of-haplotypes) compares the two.
 
 ## Keeping a set of haplotypes
