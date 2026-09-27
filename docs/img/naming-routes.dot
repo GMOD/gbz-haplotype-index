@@ -16,13 +16,13 @@ digraph namingroutes {
         fontname="Helvetica" fontsize=10 margin="0.14,0.07"]
   edge [color="#57606a" fontname="Helvetica" fontsize=9]
 
-  query  [label="query a window" fillcolor="#ddf4ff" color="#0969da"]
-  choose [label="keep, and the index\nhas anchors?" shape=diamond style=filled margin="0.02,0.02"]
-  how    [label="keep: name => name.sample === 'HG002'\l--keep HG002 --keep HG00733#1\l"
+  query  [label="query a window of a reference path" fillcolor="#ddf4ff" color="#0969da"]
+  choose [label="does the query\npass keep?" shape=diamond style=filled margin="0.02,0.02"]
+  how    [label="db.getAlignmentsForRange(path, start, end, {\l  keep: name => name.sample === 'HG002',\l})\lgbz-base-query ... --keep HG002 --keep HG00733#1\l"
           shape=note fontname="Courier" fontsize=9 fillcolor="#fff8c5" color="#9a6700"]
   { rank=same; choose; how }
   choose -> how [style=dotted arrowhead=none]
-  out    [label="walks labelled\nsample#haplotype" fillcolor="#ddf4ff" color="#0969da"]
+  out    [label="each walk labelled\nsample#haplotype" fillcolor="#ddf4ff" color="#0969da"]
 
   legend [shape=plaintext style="" margin=0 label=<
     <table border="1" color="#d0d7de" cellborder="0" cellspacing="4" cellpadding="2" style="rounded">
@@ -35,7 +35,7 @@ digraph namingroutes {
   query -> choose
 
   subgraph cluster_sampled {
-    label="Sampled\ncost grows with every\nhaplotype in the window"
+    label="Sampled route\nthe cost grows with the number\nof haplotypes in the window"
     labelloc="t"
     labeljust="l"
     fontname="Helvetica"
@@ -44,14 +44,14 @@ digraph namingroutes {
     color="#d0d7de"
     style="rounded"
     margin=10
-    s1 [label="extract every walk in the window"]
-    s2 [label="identify each at a sample\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
-    s3 [label="with keep: drop the rest" fillcolor="white"]
+    s1 [label="extract every walk through the window"]
+    s2 [label="identify each walk from a sample it passes\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
+    s3 [label="with keep, drop the haplotypes not chosen" fillcolor="white"]
     s1 -> s2 -> s3
   }
 
   subgraph cluster_anchored {
-    label="Anchored\ncost grows with\nthe haplotypes chosen"
+    label="Anchored route\nthe cost grows with the number\nof haplotypes chosen"
     labelloc="t"
     labeljust="r"
     fontname="Helvetica"
@@ -60,10 +60,10 @@ digraph namingroutes {
     color="#d0d7de"
     style="rounded"
     margin=10
-    a1 [label="find the anchor before the window\nHaplotypeAnchors" fillcolor="#dafbe1" color="#1a7f37"]
-    a2 [label="read who passes the anchor\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
-    a2b [label="take the chosen haplotypes" fillcolor="white"]
-    a3 [label="walk each through the window"]
+    a1 [label="find the anchor node before the window\nHaplotypeAnchors" fillcolor="#dafbe1" color="#1a7f37"]
+    a2 [label="list the haplotypes passing the anchor node\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
+    a2b [label="keep the chosen haplotypes" fillcolor="white"]
+    a3 [label="follow each chosen walk from the\nanchor through the window"]
     a1 -> a2 -> a2b -> a3
   }
 
