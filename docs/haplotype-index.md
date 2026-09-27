@@ -1,14 +1,41 @@
 # Naming haplotypes
 
 Upstream gbz-base names only the query path and prints every other walk as
-`unknown#N`. This package names the walks using a haplotype index, a companion
+`unknown#N`. This package names every walk, using a haplotype index: a companion
 SQLite file that the Rust program `gbz-haplotype-index` writes beside the graph
 database. Build the index once per graph, then pass it to the library or the
 command line.
 
 The index is a separate file, so the graph database stays exactly what
 `gbz-base construct` wrote, and an index can name the walks of a database
-someone else hosts. Its tables could later move into the gbz-base format itself.
+someone else hosts.
+
+## What the index holds
+
+In the GBWT, each step of a walk is a position: a node, plus an offset saying
+which of the walks through that node this one is. From any position the GBWT
+gives the next one, so a walk can be followed step by step, but no position says
+which path it belongs to. The index writes that answer down at two kinds of
+landmark.
+
+**A sample** is one position with its path recorded: the path, its orientation
+and its coordinate there. A row for every step would make the index far larger
+than the graph, so `gbz-haplotype-index` writes one every `--interval` bp along
+each path, 16 kb in the build below, in both orientations. To name a walk, a
+query follows it until it lands on a sample. The walk belongs to that path, at
+the sample's coordinate shifted by the bp walked. A larger interval makes the
+index smaller and the walk to the nearest sample longer. The idea is the same as
+the sampled suffix array in an FM-index.
+
+**An anchor** is a sample chosen for coverage instead of spacing. Every
+`--anchor-spacing` bp along the reference, `gbz-haplotype-index` picks a node
+that most haplotypes pass and writes a sample for every haplotype's visit there.
+Reading the samples at an anchor lists every haplotype passing that point,
+already named.
+
+The tables are `HaplotypeSamples`, `HaplotypeAnchors` and `HaplotypeLengths`,
+which holds the length of each path. The index also records the graph's path and
+node counts, and `open` checks them against the graph.
 
 ## Building the index
 
@@ -25,6 +52,16 @@ Give `graph.gbz.db` before the index path to check that it matches the GBZ.
 `--overwrite` replaces an existing index. The source is in
 `tools/haplotype-index/`.
 
+Keep the default of sampling both orientations. `open` rejects an index built
+with `--forward-only` with `ForwardOnlyIndexError`: about half the contigs in a
+graph like HPRC's are stored reversed relative to the reference, and walks on
+those need reverse-orientation samples.
+
+For the 10 GB HPRC v2.1 GRCh38 database, the index is 7.9 GB. Building it from
+the GBZ takes 13 minutes on 24 cores and peaks at 12 GB of memory.
+
+## Using the index
+
 In the library, open the graph and the index together:
 
 ```ts
@@ -39,26 +76,6 @@ On the command line, pass `--haplotype-index`:
 gbz-base-query https://host/graph.gbz.db \
   --haplotype-index https://host/graph.haplotype-index.db ...
 ```
-
-For the 10 GB HPRC v2.1 GRCh38 database, the haplotype index is 7.9 GB. Building
-it from the GBZ takes 13 minutes on 24 cores and peaks at 12 GB of memory. The
-index records the graph's path and node counts, and `open` checks them against
-the graph.
-
-## Tables
-
-- `HaplotypeSamples`: a GBWT position every `--interval` bp along every path, in
-  both orientations, with the path and its coordinate there.
-- `HaplotypeLengths`: the length of each path.
-- `HaplotypeAnchors`: one node every `--anchor-spacing` bp along each reference
-  path. `gbz-haplotype-index` picks the node most haplotypes pass through near
-  that offset, and stores every haplotype's visit to it as a sample, so the
-  samples at an anchor list every haplotype passing that point.
-
-`open` rejects an index built with `--forward-only` with
-`ForwardOnlyIndexError`. About half the contigs in a graph like HPRC's are
-stored reversed relative to the reference, and walks on those need
-reverse-orientation samples.
 
 ## Keeping a set of haplotypes
 
@@ -83,65 +100,35 @@ which walk belongs to which sample.
 
 ## How walks get their names
 
-The GBWT stores each haplotype as an unlabeled walk, and the haplotype index
-supplies the names. A query uses it by one of two routes, picking the route
-itself. Both return the same walks with the same names and differ only in speed.
-The tests check this, and check each name by walking back through the GBWT to
-the path's recorded start.
+A query names walks by one of two routes and picks the route itself. Both return
+the same walks with the same names and differ only in speed. The tests check
+this, and check each name by walking back through the GBWT to the path's
+recorded start.
 
-![How a query picks between the sampled and anchored routes](img/naming-routes.svg)
+![The sampled route names every walk in the window from the samples it passes; the anchored route reads the names at the anchor before the window and walks only the kept haplotypes](img/naming-routes-layout.svg)
 
-### What a sample is
+The sampled route extracts every walk in the window first and names each from
+the samples it passes, so its cost grows with every haplotype in the window. The
+anchored route reads the names first, at the anchor before the window, and then
+follows only the kept walks, so its cost grows with the number kept.
 
-In the GBWT, each step of a walk is a position: a node, plus an offset saying
-which of the walks through that node this one is. From any position the GBWT
-gives the next one, so a walk can be followed step by step, but no position says
-which path it belongs to.
+A `keep` query on an index built with `--anchor-spacing` takes the anchored
+route. Every other query takes the sampled route.
 
-A sample is one position with that answer written down. Each row of
-`HaplotypeSamples` maps a position to its path, the path's orientation and the
-path's coordinate there. A row for every step of every haplotype would make the
-index far larger than the graph, so `gbz-haplotype-index` writes one every
-`--interval` bp along each path (16 kb in the build above), in both
-orientations.
+![A query with keep on an index with anchors takes the anchored route; every other query takes the sampled route](img/naming-routes.svg)
 
-To name a walk, a query follows it until it lands on a sampled position. The
-walk belongs to that sample's path, and its coordinate is the sample's, shifted
-by the bp walked to reach it. A larger interval makes the index smaller and the
-walks to the nearest sample longer. The idea is the same as the sampled suffix
-array in an FM-index.
+[naming-routes.dot](img/naming-routes.dot) is the source of the flowchart, and
+the schematic is hand-written SVG.
 
-An anchor is a sample chosen for coverage instead of spacing. Every
-`--anchor-spacing` bp along the reference, `gbz-haplotype-index` picks a node
-that most haplotypes pass, and writes a sample for every haplotype's visit
-there. Reading the samples at an anchor node lists every haplotype passing that
-point, already named.
+### Sampled
 
-![The sampled route names every walk in the window from samples; the anchored route walks only the kept haplotypes from the anchor before the window](img/naming-routes-layout.svg)
-
-[naming-routes.dot](img/naming-routes.dot) is the source of the diagram above
-the routes, and this one is hand-written SVG.
-
-### Sampled: extract every walk, then name each one
-
-A query without `keep` always takes this route, and so does a `keep` query on an
-index without anchors.
-
-1. The query extracts every walk crossing the window's nodes, all of them
-   unlabeled.
+1. The query extracts every walk crossing the window's nodes, all unnamed.
 2. `identifyPaths()` names each walk from a sample on its steps inside the
-   window.
-3. A walk with no sample in the window is followed past it, up to four sampling
-   intervals, and stays unnamed if it meets none.
-4. With `keep`, the query drops the unwanted haplotypes only after naming them
-   all.
+   window. A walk with no sample there is followed past the window, up to four
+   sampling intervals, and stays unnamed if it meets none.
+3. With `keep`, the query drops the unwanted haplotypes, after naming them all.
 
-The cost grows with every haplotype in the window, however few `keep` asks for.
-
-### Anchored: start from the names, walk only the kept ones
-
-A `keep` query takes this route when the index was built with
-`--anchor-spacing`.
+### Anchored
 
 1. The query finds the anchor at or before the window's start, up to one spacing
    (131 kb) upstream, and walks the reference from there to the window.
@@ -150,9 +137,9 @@ A `keep` query takes this route when the index was built with
 3. It keeps the rows for the chosen haplotypes and follows each forward through
    the window. The name is known from the start, so nothing needs identifying.
 
-The other haplotypes are never touched, so the cost grows with the number kept.
-With the pages cached, 8 HPRC haplotypes take 0.4-1 s this way, against 2-9 s
-sampled ([performance.md](performance.md#keeping-a-set-of-haplotypes)).
+The other haplotypes are never touched. With the pages cached, 8 HPRC haplotypes
+take 0.4-1 s this way, against 2-9 s sampled
+([performance.md](performance.md#keeping-a-set-of-haplotypes)).
 
 ### When the anchored route needs help
 

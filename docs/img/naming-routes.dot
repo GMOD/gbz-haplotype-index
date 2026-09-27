@@ -1,60 +1,61 @@
 // Source for docs/img/naming-routes.svg, which docs/haplotype-index.md embeds.
 // Regenerate with: dot -Tsvg docs/img/naming-routes.dot -o docs/img/naming-routes.svg
 // Palette matches dataflow.dot.
+//
+// Main paths only. The anchored route's two fallbacks (a kept haplotype
+// missing from the anchor, a walk that never reaches the window) are prose in
+// haplotype-index.md; drawn, their dashed edges crossed both clusters and
+// buried the choice the diagram exists to show.
 digraph namingroutes {
   rankdir=TB
   bgcolor="white"
   nodesep=0.35
-  ranksep=0.3
+  ranksep=0.32
   newrank=true
   node [shape=box style="filled,rounded" fillcolor="#f6f8fa" color="#57606a"
         fontname="Helvetica" fontsize=10 margin="0.14,0.07"]
   edge [color="#57606a" fontname="Helvetica" fontsize=9]
 
   query  [label="query a window" fillcolor="#ddf4ff" color="#0969da"]
-  choose [label="keep, and an index\nbuilt with --anchor-spacing?" shape=diamond style=filled margin="0.02,0.02"]
+  choose [label="keep, and the index\nhas anchors?" shape=diamond style=filled margin="0.02,0.02"]
   out    [label="named walks" fillcolor="#ddf4ff" color="#0969da"]
 
   query -> choose
 
   subgraph cluster_sampled {
-    label="Sampled: name every walk, then filter\ncost grows with every haplotype"
+    label="Sampled\ncost grows with every\nhaplotype in the window"
     labelloc="t"
+    labeljust="l"
     fontname="Helvetica"
     fontsize=10
     fontcolor="#57606a"
     color="#d0d7de"
     style="rounded"
     margin=10
-    s1 [label="extract every walk crossing the window\nall unlabeled"]
-    s2 [label="name each from a sample on its steps\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
-    s3 [label="no sample in the window:\nfollow past it, up to 4 intervals"]
-    s4 [label="with keep: drop the rest"]
-    s1 -> s2 -> s3 -> s4
+    s1 [label="extract every walk crossing the window\nall unnamed"]
+    s2 [label="name each from a sample it passes\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
+    s3 [label="with keep: drop the rest"]
+    s1 -> s2 -> s3
   }
 
   subgraph cluster_anchored {
-    label="Anchored: start from the names, walk only the kept ones\ncost grows with the haplotypes kept"
+    label="Anchored\ncost grows with\nthe haplotypes kept"
     labelloc="t"
+    labeljust="r"
     fontname="Helvetica"
     fontsize=10
     fontcolor="#57606a"
     color="#d0d7de"
     style="rounded"
     margin=10
-    a1 [label="find the anchor at or before the window\nwalk the reference from it"]
-    a2 [label="read every haplotype at the anchor, named\nHaplotypeAnchors" fillcolor="#dafbe1" color="#1a7f37"]
-    a3 [label="keep the chosen rows"]
-    a4 [label="walk each forward through the window"]
-    a5 [label="contig starts in the window\nor skips the anchor: found from a sample" style="dashed,rounded,filled"]
-    a1 -> a2 -> a3 -> a4
-    a3 -> a5 [style=dashed label=" missing from\l the anchor\l"]
+    a1 [label="read the anchor before the window:\nevery haplotype there, named\nHaplotypeAnchors" fillcolor="#dafbe1" color="#1a7f37"]
+    a2 [label="keep the chosen ones"]
+    a3 [label="walk each forward through the window"]
+    a1 -> a2 -> a3
   }
 
   choose -> s1 [label=" no "]
   choose -> a1 [label=" yes "]
-  a4 -> s1 [style=dashed constraint=false label=" a walk never\l reaches the window\l"]
-  s4 -> out
-  a4 -> out
-  a5 -> out [style=dashed]
+  s3 -> out
+  a3 -> out
 }
