@@ -1,9 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 620" font-family="Helvetica, Arial, sans-serif" font-size="11">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 636" font-family="Helvetica, Arial, sans-serif" font-size="11">
 <defs><marker id="t" viewBox="0 0 2 10" refX="1" refY="5" markerWidth="2" markerHeight="10" orient="auto"><rect width="2" height="10" fill="#57606a"/></marker></defs>
 <rect width="100%" height="100%" fill="#ffffff"/>
 
 <text x="20" y="28" fill="#24292f" font-weight="bold">Sampled route</text>
-<text x="20" y="46" fill="#24292f">A query with no keep option extracts every walk through the window, then follows each walk to a sample to identify it.</text>
+<text x="20" y="46" fill="#24292f">A query without <tspan font-family="Courier, monospace" font-size="10">{ keep }</tspan> or <tspan font-family="Courier, monospace" font-size="10">--keep</tspan> extracts every walk through the window, then follows each walk to a sample to identify it.</text>
 <text x="20" y="62" fill="#24292f">The cost grows with the number of haplotypes in the window, 464 in HPRC v2.1.</text>
 <rect x="20" y="72" width="590" height="34" fill="#fff8c5" stroke="#9a6700" rx="3"/>
 <text x="28" y="86" font-family="Courier, monospace" font-size="10" fill="#24292f">db.getAlignmentsForRange('GRCh38#0#chr6', start, end)</text>
@@ -40,8 +40,10 @@
 <text x="600" y="246" fill="#57606a" font-size="10">to the next sample</text>
 
 <text x="20" y="296" fill="#24292f" font-weight="bold">Anchored route</text>
-<text x="20" y="314" fill="#24292f">A query that passes keep reads the samples at one anchor node, which list every haplotype passing it, then follows the chosen walks.</text>
-<text x="20" y="330" fill="#24292f">The cost grows with the number of haplotypes chosen, and the query never reads the other walks.</text>
+<text x="20" y="314" fill="#24292f">A query with <tspan font-family="Courier, monospace" font-size="10">{ keep: name =&gt; … }</tspan> or <tspan font-family="Courier, monospace" font-size="10">--keep NAME</tspan> reads the samples at one anchor node, which list every haplotype</text>
+<text x="20" y="330" fill="#24292f">passing it, then follows the walks whose name the predicate accepts. The cost grows with the number of haplotypes chosen,</text>
+<text x="20" y="346" fill="#24292f">and the query never reads the other walks.</text>
+<g transform="translate(0 16)">
 <rect x="20" y="340" width="590" height="34" fill="#fff8c5" stroke="#9a6700" rx="3"/>
 <text x="28" y="354" font-family="Courier, monospace" font-size="10" fill="#24292f">db.getAlignmentsForRange('GRCh38#0#chr6', start, end, { keep: name => name.sample === 'HG002' })</text>
 <text x="28" y="368" font-family="Courier, monospace" font-size="10" fill="#24292f">gbz-base-query ... --alignments --keep HG002</text>
@@ -88,4 +90,5 @@
 <text x="344" y="594" fill="#1a7f37" font-size="10">sample, and anchor node, read from graph.haplotype-index.db</text>
 <line x1="310" y1="606" x2="334" y2="606" stroke="#0969da" stroke-width="2.5"/>
 <text x="344" y="610" fill="#0969da" font-size="10">chosen walk, followed from the anchor through the window</text>
+</g>
 </svg>
