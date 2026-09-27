@@ -63,8 +63,8 @@ the spacing and the rule, and the upstream `query` binary keeps working on an
 augmented database.
 
 The index needs both orientations because about half the contigs of a graph like
-HPRC's are stored against their reference, and a walk on one of those meets no
-sample in a forward-only index. `GBZBase.open` throws `ForwardOnlyIndexError`
+HPRC's are stored against their reference, and a forward-only index holds no
+sample for a walk on one of those. `GBZBase.open` throws `ForwardOnlyIndexError`
 for an index written with `--forward-only`, which its
 `haplotype_index_orientations` tag records as `forward`, instead of returning
 half-named results.
@@ -75,9 +75,9 @@ A query without `keep` names its walks with `subgraph.identifyPaths()`. The
 method loads the samples for the window's nodes with one index scan per run of
 consecutive node ids; a window whose nodes sit in far-apart id ranges, as a
 tandem repeat's do, takes one scan per range. It then chains each haplotype's
-fragments to the next through the private nodes between them. A chain that met
-no sample inside the window walks on until it finds one, up to four intervals
-past the last fragment it linked.
+fragments to the next through the private nodes between them. When a chain
+contains no sample inside the window, `identifyPaths()` follows its path onward
+until it reaches one, up to four intervals past the last fragment it linked.
 
 `identifyPaths()` fills in the named half of each record: the PanSN name, the
 interval in that contig's coordinates, and the path handle. The range queries
@@ -97,8 +97,8 @@ route, which `--stats` reports by name. The reader:
 4. walks each row whose path the predicate accepts forward with `lf()`, from the
    row's position through the window.
 
-Each walk takes its identity and coordinate from its anchor row, so the route
-needs no chaining and no index scan, and nothing outside the kept set is
+The reader takes each walk's identity and coordinate from its anchor row, so the
+route needs no chaining and no index scan, and nothing outside the kept set is
 extracted or named.
 
 A path through a duplicated stretch has several rows at the anchor node, one per
@@ -109,16 +109,15 @@ therefore skips HG01109#1's second amylase copy, where walking every visit to
 the bound would take 30,000 steps.
 
 A kept contig with no row at the anchor, because it bypasses that node or starts
-inside the window, is found the way the sampled route finds every haplotype:
-from its samples on the window's nodes. The reader follows one sample in the
-orientation that runs with the reference back to the reference before the
-window, and starts the walk there. The other orientation would walk out of the
-window backwards.
+inside the window, is found as in the sampled route, from its samples on the
+window's nodes. The reader follows one sample in the orientation that runs with
+the reference back to the reference before the window, and starts the walk
+there. A walk in the other orientation would leave the window backwards.
 
-When a walk cannot be completed, the whole window falls back to the sampled
-route, and `--stats` reports why. A companion without `HaplotypeAnchors` takes
-the sampled route and then trims to the kept set, as does a query with
-`haplotypes: 'distinct'`.
+When a walk cannot be completed, the reader falls back to the sampled route for
+the whole window, and `--stats` reports why. On a companion without
+`HaplotypeAnchors`, and for a query with `haplotypes: 'distinct'`, the reader
+takes the sampled route and then trims to the kept set.
 [performance.md](performance.md#keeping-a-set-of-haplotypes) measures both
 routes.
 
