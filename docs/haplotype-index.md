@@ -60,27 +60,41 @@ against the graph.
 stored reversed relative to the reference, and walks on those need
 reverse-orientation samples.
 
-## Two ways to name walks
-
-**Sampled.** `identifyPaths()` reads the samples on the window's nodes, links
-each haplotype's fragments into chains, and names each chain from a sample. When
-a chain has no sample in the window, `identifyPaths()` follows it past the
-window, up to four sampling intervals. The range queries call `identifyPaths()`
-for you, and the lower-level queries leave the call to you. On the command line,
-`--resolve` and `--alignments` run it.
-
-**Anchored.** A query with `keep` on a companion with anchors reads the samples
-at the anchor before the window and walks only the chosen haplotypes forward
-from there through the window. The cost scales with the number of chosen
-haplotypes. If a walk fails, the query falls back to the sampled route, and
-`gbz-base-query --stats` reports the reason.
-[performance.md](performance.md#keeping-a-set-of-haplotypes) compares the two.
-
 ## Keeping a set of haplotypes
 
-The `keep` option and `--keep SAMPLE[#HAP]` call `keepHaplotypes(predicate)`,
-which reduces a named subgraph to the reference, the accepted walks and the
-nodes they visit.
+Pass `keep` to a range query, or `--keep SAMPLE[#HAP]` on the command line, to
+get only the haplotypes you name. `keepHaplotypes(predicate)` leaves the
+reference, the chosen walks and the nodes they visit, and drops everything else.
 
-The tests check every named fragment by walking backward through the GBWT to the
-path's recorded start.
+## How walks get their names
+
+The package has two ways to find a walk's name, and the query picks one itself.
+Both return the same walks, which `test/anchors.test.ts` checks, so the choice
+changes only how long a query takes.
+
+**Sampled**, the default. The query extracts every haplotype through the window,
+and `identifyPaths()` names each walk from the samples on the window's nodes. A
+walk with no sample in the window is followed past the window for up to four
+sampling intervals. If it meets no sample there, it stays unnamed. With `keep`,
+the query drops the other walks only after reading and naming all of them, so
+the cost follows the number of haplotypes in the graph, 464 in HPRC.
+
+**Anchored**, when a query has `keep` and the index was built with
+`--anchor-spacing`. The query reads which haplotypes pass the anchor just before
+the window, then walks only the chosen ones forward through it. The cost follows
+the number you keep. Keeping 8 HPRC haplotypes takes 0.4-1 s with the pages
+cached, against 2-9 s by the sampled route
+([performance.md](performance.md#keeping-a-set-of-haplotypes)).
+
+An anchored walk can fail to reach the window, for example when its contig ends
+between the anchor and the window. The query then redoes the window by the
+sampled route, so the answer stays complete but takes longer.
+`gbz-base-query --stats` prints the reason.
+
+`getSubgraphForRange()` and `getAlignmentsForRange()` do all of this for you.
+The lower-level queries return unnamed walks until you call `identifyPaths()`.
+On the command line, `--resolve` names the walks, and `--alignments`, `--keep`,
+`--against` and `--stack` turn it on.
+
+The tests check every name by walking its fragment backward through the GBWT to
+the path's recorded start.
