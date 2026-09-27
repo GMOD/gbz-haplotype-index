@@ -1,9 +1,9 @@
 # gbz-haplotype-index
 
 Writes a haplotype index for a [gbz-base](https://github.com/jltsiren/gbz-base)
-database. The index is a companion SQLite file that names every walk in a query,
-with its haplotype and coordinates, where gbz-base reports all but the query
-path as `unknown`.
+database. gbz-base reports every walk but the query path as `unknown`. With the
+index beside the database, @gmod/gbz-base names every walk in a query with its
+haplotype and coordinates.
 
 ```bash
 cargo install gbz-haplotype-index

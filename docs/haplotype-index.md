@@ -6,8 +6,8 @@ SQLite file that the Rust program `gbz-haplotype-index` writes beside the graph
 database. Build the index once per graph, then pass it to the library or the
 command line.
 
-The index lives in its own file so the graph database stays exactly what
-`gbz-base construct` wrote, and so an index can name the walks of a database
+The index is a separate file, so the graph database stays exactly what
+`gbz-base construct` wrote, and an index can name the walks of a database
 someone else hosts. Its tables could later move into the gbz-base format itself.
 
 ## Building the index
@@ -62,39 +62,25 @@ reverse-orientation samples.
 
 ## Keeping a set of haplotypes
 
-Pass `keep` to a range query, or `--keep SAMPLE[#HAP]` on the command line, to
-get only the haplotypes you name. `keepHaplotypes(predicate)` leaves the
-reference, the chosen walks and the nodes they visit, and drops everything else.
+`keep` in the library, or `--keep SAMPLE[#HAP]` on the command line, reduces a
+query to the reference, the chosen haplotypes and the nodes they visit.
 
 ## How walks get their names
 
-The package has two ways to find a walk's name, and the query picks one itself.
-Both return the same walks, which `test/anchors.test.ts` checks, so the choice
-changes only how long a query takes.
+A query names its walks by one of two routes and picks the route itself. The
+routes return the same walks and differ only in speed. The tests check this, and
+check each name by walking back through the GBWT to the path's recorded start.
 
-**Sampled**, the default. The query extracts every haplotype through the window,
-and `identifyPaths()` names each walk from the samples on the window's nodes. A
-walk with no sample in the window is followed past the window for up to four
-sampling intervals. If it meets no sample there, it stays unnamed. With `keep`,
-the query drops the other walks only after reading and naming all of them, so
-the cost follows the number of haplotypes in the graph, 464 in HPRC.
+**Sampled**, the default. The query extracts every haplotype in the window, and
+`identifyPaths()` names each walk from the samples on the window's nodes. A walk
+with no sample there is followed up to four sampling intervals past the window,
+and stays unnamed if it meets none. With `keep`, the query discards the other
+haplotypes afterwards, so the cost grows with every haplotype in the graph.
 
-**Anchored**, when a query has `keep` and the index was built with
-`--anchor-spacing`. The query reads which haplotypes pass the anchor just before
-the window, then walks only the chosen ones forward through it. The cost follows
-the number you keep. Keeping 8 HPRC haplotypes takes 0.4-1 s with the pages
-cached, against 2-9 s by the sampled route
-([performance.md](performance.md#keeping-a-set-of-haplotypes)).
-
-An anchored walk can fail to reach the window, for example when its contig ends
-between the anchor and the window. The query then redoes the window by the
-sampled route, so the answer stays complete but takes longer.
-`gbz-base-query --stats` prints the reason.
-
-`getSubgraphForRange()` and `getAlignmentsForRange()` do all of this for you.
-The lower-level queries return unnamed walks until you call `identifyPaths()`.
-On the command line, `--resolve` names the walks, and `--alignments`, `--keep`,
-`--against` and `--stack` turn it on.
-
-The tests check every name by walking its fragment backward through the GBWT to
-the path's recorded start.
+**Anchored**, for a `keep` query on an index built with `--anchor-spacing`. The
+query reads which haplotypes pass the anchor before the window and walks only
+the chosen ones, so the cost grows with the number kept. With the pages cached,
+8 HPRC haplotypes take 0.4-1 s, against 2-9 s sampled
+([performance.md](performance.md#keeping-a-set-of-haplotypes)). If a walk fails
+to reach the window, for example because its contig ends first, the query redoes
+the window by the sampled route, and `gbz-base-query --stats` prints the reason.
