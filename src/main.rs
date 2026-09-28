@@ -578,7 +578,7 @@ CREATE TABLE HaplotypeStrays (
     node_handle INTEGER NOT NULL,
     node_offset INTEGER NOT NULL,
     PRIMARY KEY (reference_handle, reference_start, reference_end, path_handle, path_start, path_end, node_handle, node_offset)
-) STRICT;";
+) STRICT, WITHOUT ROWID;";
 
 struct Strays {
     rows: Vec<strays::Stray>,
