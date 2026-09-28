@@ -8,7 +8,7 @@ haplotype and coordinates.
 ```bash
 cargo install gbz-haplotype-index
 
-gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 graph.gbz graph.haplotype-index.db
+gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 --reference-interval 256 graph.gbz graph.haplotype-index.db
 gbz-haplotype-index --from-db graph.gbz.db graph.haplotype-index.db
 ```
 

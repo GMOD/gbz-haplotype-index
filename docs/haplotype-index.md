@@ -26,9 +26,10 @@ query window. The haplotype index records the path at positions along the way:
 - A **sample** records a position, the path through it, the orientation and the
   coordinate along that path. `gbz-haplotype-index` writes one every
   `--interval` bp along each path, in both orientations, plus one at the start
-  and end of each path. To identify a walk, the library follows the walk to the
-  nearest sample. A larger interval gives a smaller index and longer walks, the
-  same trade as the sampled suffix array in an FM-index.
+  and end of each path. Along the reference paths it writes one every
+  `--reference-interval` bp. To identify a walk, the library follows the walk to
+  the nearest sample. A larger interval gives a smaller index and longer walks,
+  the same trade as the sampled suffix array in an FM-index.
 - An **anchor** is a reference node that most haplotypes in the region visit,
   one every `--anchor-spacing` bp along each reference path. The haplotype index
   contains a sample for every visit to an anchor node, so the samples at that
@@ -56,10 +57,10 @@ rest of this page uses it for the index entry.
 ```bash
 cargo install gbz-haplotype-index
 
-gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 graph.gbz graph.haplotype-index.db
+gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 --reference-interval 256 graph.gbz graph.haplotype-index.db
 
 # without the GBZ, reading paths from the database
-gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 --from-db graph.gbz.db graph.haplotype-index.db
+gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 --reference-interval 256 --from-db graph.gbz.db graph.haplotype-index.db
 ```
 
 Give `graph.gbz.db` before the index path to check that it matches the GBZ, and
@@ -69,6 +70,17 @@ reference sample. Anchoring both GRCh38 and CHM13 in the HPRC chr22 graph
 doubled the anchor rows, and a query on a path with no anchor near the window
 identifies every walk. `--anchor-spacing 0` writes no anchors. The source is in
 `tools/haplotype-index/`.
+
+`--reference-interval` sets the interval between samples along the reference
+paths, or those of `--anchor-sample`, and defaults to `--interval`. A query that
+uses the `keep` option checks every sample on the subgraph's nodes against where
+the anchors place its path ([below](#keep)), so a reference sample on a stretch
+of the reference that the subgraph reaches far from the window sends the query
+to the sampled route. Those stretches are about twice `context` long: 129-280 bp
+at the default `context` of 100 at IGL on HPRC chr22. On the HPRC chr22 graph,
+`--reference-interval 256` made the index 9.8% larger than sampling GRCh38 every
+16,384 bp like the haplotypes, 128 made it 15.8% larger, and 1,024 made it 3.5%
+larger.
 
 Keep the default of sampling both orientations. `open` rejects an index built
 with `--forward-only`, because about half the contigs in a graph like HPRC's run
@@ -201,13 +213,23 @@ sample in step 3 lies outside where its path can lie, when a walk in step 4
 reaches its cap or a one-sided walk runs on past the stretch without the contig
 ending, or when a twin in step 5 stays out of reach. The query then identifies
 every walk on the same subgraph and drops the haplotypes the predicate rejects.
-A sample outside where its path can lie comes from a segmental duplication or a
-collapsed paralog, where a haplotype crosses the window's nodes again hundreds
-of kb away: 130-270 kb away at IGL on HPRC chr22. At AMY1 in HPRC v2.1, one
-contig starts inside the window and passes the stretch between the anchors again
-500 kb later, in reverse. The query also identifies every walk when more than 32
-chosen paths pass the anchors, because the sampled route took less time than the
-walks for 42 haplotypes. `gbz-base-query --stats` prints the reason.
+The query also identifies every walk when more than 32 chosen paths pass the
+anchors, because the sampled route took less time than the walks for 42
+haplotypes. `gbz-base-query --stats` prints the reason.
+
+A sample lies outside where its path can lie when the subgraph reaches a stretch
+that the path passes far from the window. At IGL on HPRC chr22, a few haplotypes
+take rare edges between the window and stretches that GRCh38 passes 270-670 kb
+before it, so `context` pulls those stretches into the subgraph. Every haplotype
+that passes such a stretch has a piece there that no walk between the anchors
+reaches, and the check depends on a sample landing on one of the stretches. At
+`context` 100, an index built with `--reference-interval 256` put a GRCh38
+sample on 15 of the 21 stretches in two IGL windows, and 128 bp put one on
+all 21. Sampling GRCh38 every 16,384 bp, like the haplotypes, put one on 2. In a
+collapsed paralog, a haplotype passes the window's nodes again far away, on
+nodes GRCh38 does not visit, so only a sample of that haplotype can land on the
+pass. At AMY1 in HPRC v2.1, one contig starts inside the window and passes the
+stretch between the anchors again 500 kb later, in reverse.
 
 On HPRC chr22, over 58 windows at `context` 0 and 1000 with five keep sets, the
 keep route answered 486 of 580 queries with anchors every 131,072 bp and 482
