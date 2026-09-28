@@ -210,9 +210,9 @@ chosen paths pass the anchors, because the sampled route took less time than the
 walks for 42 haplotypes. `gbz-base-query --stats` prints the reason.
 
 On HPRC chr22, over 58 windows at `context` 0 and 1000 with five keep sets, the
-keep route answered 494 of 580 queries with anchors every 131,072 bp and 491
+keep route answered 486 of 580 queries with anchors every 131,072 bp and 482
 with anchors every 32,768 bp, and matched the sampled route's walks in each. The
 other queries, all in LCR22, IGL and GSTT, went to the sampled route. With the
-pages cached, the keep route's median was 121 ms and 81 ms on the two indexes,
-against 787 ms and 767 ms for the sampled route
+pages cached, the keep route's median was 136 ms and 87 ms on the two indexes,
+against 688 ms and 764 ms for the sampled route
 ([performance.md](performance.md#a-subset-of-the-haplotypes)).
