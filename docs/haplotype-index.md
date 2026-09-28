@@ -136,9 +136,11 @@ to a sample of its path.
 
 A query that uses the `keep` option takes the keep route when `haplotypes` is
 `'all'`, the default, and the haplotype index has anchors. The keep route
-returns its walks when the haplotype index shows that they are all of the chosen
-walks ([below](#keep)). Otherwise the library identifies every walk on the same
-subgraph, then drops the haplotypes the predicate rejects.
+returns its walks when the haplotype index places every haplotype it sees at the
+anchors or in the window ([below](#keep)); a chosen haplotype with no visit to
+any anchor read and no sample in the window stays out of the result. When a
+check fails, the library identifies every walk on the same subgraph, then drops
+the haplotypes the predicate rejects.
 
 ![A query that uses the keep option, with haplotypes left at 'all' and a haplotype index with anchors, takes the keep route; when the keep route cannot show that its walks are complete, and for every other query, the library identifies every walk](img/naming-routes.svg)
 
@@ -165,10 +167,11 @@ schematic is hand-written SVG.
    visits place each path. A path with a visit on each side lies between them. A
    path with a visit on one side ends between the anchors or bypasses the other
    anchor node, and can lie up to the distance between the anchors from its
-   visit. A path with a sample on the subgraph's nodes and no visit to either
-   anchor is looked for at the next anchors out, up to two on each side, and
-   past those counts as local when it is shorter than the stretch between the
-   outermost anchors read, plus 64 kb.
+   visit. The query also reads the next two anchors out on each side, so a path
+   that bypasses both near anchor nodes is placed from a wider visit, and a
+   visit on one side can pair one on the other. A path with a sample on the
+   subgraph's nodes and no visit to any of these anchors counts as local when it
+   is shorter than the stretch between the outermost anchors, plus 64 kb.
 3. The query reads the samples on the nodes of the subgraph and checks that each
    one lies within 32 kb of where its path can lie.
 4. The query walks each chosen haplotype from its visit to the anchor before the
@@ -176,11 +179,14 @@ schematic is hand-written SVG.
    piece it finds, and records every piece on the way. A haplotype that passes
    one anchor on the flipped handle carries an inversion covering that anchor,
    and traverses the stretch between the anchors backward from there, so the
-   walk goes on through that stretch. A haplotype with a visit on one side is
-   walked from it through the stretch to where the other anchor would be, and
-   that walk counts when the contig ends on the way; when the contig runs on,
-   the query reads the next anchors out for a visit that pairs the first. A
-   chosen haplotype with no visit is walked whole from its start.
+   walk goes on through that stretch, and each walk also goes back 32 kb before
+   the first piece it found. A haplotype with a visit on one side is walked from
+   the row that heads into the window through the stretch to where the other
+   anchor would be, and that walk counts when the contig ends on the way. A
+   chosen haplotype with no visit and a sample in the subgraph is walked whole
+   from its start. A chosen haplotype with no visit to any of the anchors read
+   and no sample in the subgraph is invisible to the route, and its pass stays
+   out of the result.
 5. `extractPaths` keeps each piece in the orientation whose end nodes are
    canonical. When the walk found a piece in the other orientation, the query
    walks on in that orientation and reads the samples of the other orientation
@@ -188,11 +194,13 @@ schematic is hand-written SVG.
    into the piece.
 
 The checks fail when an anchor is missing, when a chosen haplotype has no visit
-a walk can start from, when a sample in step 3 lies outside where its path can
-lie, when a walk in step 4 reaches its cap, or when a twin in step 5 stays out
-of reach. The query then identifies every walk on the same subgraph and drops
-the haplotypes the predicate rejects. A sample outside where its path can lie
-comes from a segmental duplication or a collapsed paralog, where a haplotype
+a walk can start from, when a path with a sample in the subgraph and no visit is
+too long to lie between the anchors, when a sample in step 3 lies outside where
+its path can lie, when a walk in step 4 reaches its cap or a one-sided walk runs
+on past the stretch without the contig ending, or when a twin in step 5 stays
+out of reach. The query then identifies every walk on the same subgraph and
+drops the haplotypes the predicate rejects. A sample outside where its path can
+lie comes from a segmental duplication or a collapsed paralog, where a haplotype
 crosses the window's nodes again hundreds of kb away: 130-270 kb away at IGL on
 HPRC chr22. At AMY1 in HPRC v2.1, one contig starts inside the window and passes
 the stretch between the anchors again 500 kb later, in reverse. The query also
