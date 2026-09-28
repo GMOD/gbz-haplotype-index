@@ -2,10 +2,8 @@
 // Regenerate with: dot -Tsvg docs/img/naming-routes.dot -o docs/img/naming-routes.svg
 // Palette matches dataflow.dot.
 //
-// Main paths only. The anchored route's two fallbacks (a chosen haplotype
-// missing from the anchor, a walk that never reaches the window) are prose in
-// haplotype-index.md; drawn, their dashed edges crossed both clusters and
-// buried the choice the diagram exists to show.
+// Main paths only. The keep route's checks are one decision node here, and
+// haplotype-index.md lists them.
 digraph namingroutes {
   rankdir=TB
   bgcolor="white"
@@ -51,8 +49,8 @@ digraph namingroutes {
     s1 -> s2 -> s3
   }
 
-  subgraph cluster_anchored {
-    label="Anchored route\nthe cost grows with\nthe haplotypes chosen"
+  subgraph cluster_keep {
+    label="Keep route\nthe cost grows with\nthe haplotypes chosen"
     labelloc="t"
     labeljust="l"
     fontname="Helvetica"
@@ -61,17 +59,18 @@ digraph namingroutes {
     color="#d0d7de"
     style="rounded"
     margin=10
-    a1 [label="find the anchor node before the window\nHaplotypeAnchors" fillcolor="#dafbe1" color="#1a7f37"]
-    a2 [label="list the haplotypes passing the anchor node\nHaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
-    a2b [label="keep the walks where\nkeep(name) is true" fillcolor="white"]
-    a3 [label="follow each chosen walk from the\nanchor through the window"]
-    a1 -> a2 -> a2b -> a3
+    k1 [label="build the subgraph the sampled\nroute builds for the window"]
+    k2 [label="read every visit to the anchors\nbefore and after the window\nHaplotypeAnchors, HaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
+    k3 [label="walk each haplotype where keep(name)\nis true from its visit to one anchor\nto its visit to the other"]
+    k4 [label="do the samples on the window's\nnodes show that these walks are\nall of the chosen haplotypes' walks?" shape=diamond style=filled margin="0.02,0.02"]
+    k1 -> k2 -> k3 -> k4
   }
 
   choose -> s1 [label=" no "]
   choose -> anchors [label=" yes "]
   anchors -> s1 [label=" no " constraint=false]
-  anchors -> a1 [label=" yes "]
+  anchors -> k1 [label=" yes "]
+  k4 -> s1 [label=" no " constraint=false]
   s3 -> out
-  a3 -> out
+  k4 -> out [label=" yes "]
 }

@@ -32,20 +32,18 @@ query window. The haplotype index records the path at positions along the way:
 - An **anchor** is a reference node that most haplotypes in the region visit,
   one every `--anchor-spacing` bp along each reference path. The haplotype index
   contains a sample for every visit to an anchor node, so the samples at that
-  node list every haplotype passing it.
+  node list every haplotype passing it, with the position and coordinate of each
+  visit.
 
 ![graph.gbz.db lists the walks at each node by rank and names each path at the start of its walk. The haplotype index adds a sample every --interval bp that maps a position to a path, so a query names a walk from the next sample along it](img/haplotype-samples.svg)
 
-A query that uses the `keep` option starts from an anchor node.
-`gbz-haplotype-index` places the samples of each path by that path's own
-coordinates, so the samples of different haplotypes fall on different nodes. At
-`--interval 16384`, a 4 kb window holds a sample running with the reference for
-about one haplotype in four. To find the others from samples, the query would
-have to extract and follow every walk through the window, which is the sampled
-route. The samples at an anchor node list every haplotype passing it, with its
-position, so one lookup before the window gives the query a start on each chosen
-walk. Samples in the window serve as the fallback for a haplotype that bypasses
-the anchor node or starts after it ([step 4](#anchored)).
+A query that uses the `keep` option reads the samples in the window and the
+anchor rows on both sides of it. `gbz-haplotype-index` starts the interval count
+of each path again at every anchor visit, so the samples of all haplotypes fall
+near the same reference positions, and a window shorter than `--interval` often
+contains none. The anchor rows before and after the window list the position and
+coordinate of each chosen haplotype on both sides, and the query walks each
+chosen haplotype from one to the other ([below](#keep)).
 
 Table `HaplotypeSamples` contains the samples, `HaplotypeAnchors` lists the
 anchor nodes, and `HaplotypeLengths` lists the length of each path.
@@ -58,15 +56,18 @@ rest of this page uses it for the index entry.
 ```bash
 cargo install gbz-haplotype-index
 
-gbz-haplotype-index --interval 16384 --anchor-spacing 131072 graph.gbz graph.haplotype-index.db
+gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 graph.gbz graph.haplotype-index.db
 
 # without the GBZ, reading paths from the database
-gbz-haplotype-index --interval 16384 --anchor-spacing 131072 --from-db graph.gbz.db graph.haplotype-index.db
+gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 --from-db graph.gbz.db graph.haplotype-index.db
 ```
 
 Give `graph.gbz.db` before the index path to check that it matches the GBZ, and
-`--overwrite` to replace an existing index. `--anchor-spacing 0` writes no
-anchors, and every query then takes the sampled route below. The source is in
+`--overwrite` to replace an existing index. `--anchor-spacing` defaults to
+32,768 bp, and `--anchor-sample` places the anchors on the paths of one
+reference sample. Anchoring both GRCh38 and CHM13 in the HPRC chr22 graph
+doubled the anchor rows, and a query on a path with no anchor near the window
+identifies every walk. `--anchor-spacing 0` writes no anchors. The source is in
 `tools/haplotype-index/`.
 
 Keep the default of sampling both orientations. `open` rejects an index built
@@ -74,8 +75,10 @@ with `--forward-only`, because about half the contigs in a graph like HPRC's run
 reversed relative to the reference, and identifying a walk on one of those needs
 reverse-orientation samples.
 
-For the 10 GB HPRC v2.1 GRCh38 database, the index is 7.9 GB. Building it from
-the GBZ takes 13 minutes on 24 cores and peaks at 12 GB of memory.
+For the 10 GB HPRC v2.1 GRCh38 database, the index with 131,072 bp anchors on
+GRCh38 and CHM13 is 7.9 GB, and building it from the GBZ takes 13 minutes on 24
+cores and peaks at 12 GB of memory. On the HPRC chr22 graph, 32,768 bp anchors
+on GRCh38 alone made the index 5.6% larger than that setting.
 
 ## Using the haplotype index
 
@@ -110,34 +113,34 @@ gbz-base-query ... --keep HG002 --keep HG00733#1
 ```
 
 The query then returns the reference, the haplotypes you kept and the nodes they
-visit. `--keep` takes a sample or `sample#haplotype` and can repeat. A query
-that uses the `keep` option needs the haplotype index, because the library looks
-up the haplotype of each walk in it.
+visit: the walks the same query without `keep` returns for those haplotypes.
+`--keep` takes a sample or `sample#haplotype` and can repeat. A query that uses
+the `keep` option needs the haplotype index, because the library looks up the
+haplotype of each walk in it.
 
 ## How a query identifies walks
 
-The library identifies walks by one of two routes and selects the route from the
-options passed with the query. Both routes find the same haplotype for every
-walk. The tests compare the two, and check each result by walking back through
-the GBWT to the start of the path.
+The library identifies walks by one of two routes, and both return the same
+walks with the same GBWT positions and coordinates. The tests compare the two
+routes record for record, and check each record by walking back through the GBWT
+to a sample of its path.
 
-![The sampled route extracts every walk through the window and follows each one to a sample. The anchored route reads the samples at one anchor node, which list every haplotype passing it, then follows the chosen walks through the window. A strip of chr6 marks one anchor per 131,072 bp and the one a window at 33,000,000 uses](img/naming-routes-layout.svg)
+![The sampled route extracts every walk through the window and follows each one to a sample. The keep route reads the samples on the window's nodes and the anchor rows on both sides of the window, then walks the chosen haplotypes from one anchor to the other. A strip of chr6 marks one anchor per 32,768 bp and the two a window at 33,000,000 uses](img/naming-routes-layout.svg)
 
 - **Sampled**: the query extracts every walk through the window, then follows
   each walk to a sample to identify it. The cost grows with the number of
   haplotypes in the window.
-- **Anchored**: the query reads the samples at the anchor node before the
-  window, which list every haplotype passing it, then follows the chosen walks.
-  The cost grows with the number of haplotypes chosen.
+- **Keep**: the query builds the same subgraph and finds the walks of the chosen
+  haplotypes in it from the samples and the anchor rows. The cost grows with the
+  number of haplotypes chosen.
 
-A query that uses the `keep` option takes the anchored route, and every other
-query takes the sampled route. The library sends a query that uses the `keep`
-option down the sampled route when its `haplotypes` setting is other than
-`'all'`, the default, or when `gbz-haplotype-index` built the haplotype index
-with `--anchor-spacing 0`. On that route the library identifies every walk, then
-drops the haplotypes the predicate rejects.
+A query that uses the `keep` option takes the keep route when `haplotypes` is
+`'all'`, the default, and the haplotype index has anchors. The keep route
+returns its walks when the haplotype index shows that they are all of the chosen
+walks ([below](#keep)). Otherwise the library identifies every walk on the same
+subgraph, then drops the haplotypes the predicate rejects.
 
-![A query that uses the keep option and leaves haplotypes at 'all' takes the anchored route; every other query takes the sampled route](img/naming-routes.svg)
+![A query that uses the keep option, with haplotypes left at 'all' and a haplotype index with anchors, takes the keep route; when the keep route cannot show that its walks are complete, and for every other query, the library identifies every walk](img/naming-routes.svg)
 
 The flowchart source is [naming-routes.dot](img/naming-routes.dot); the
 schematic is hand-written SVG.
@@ -151,25 +154,56 @@ schematic is hand-written SVG.
 3. For a query that uses the `keep` option, the library then drops the
    haplotypes the predicate rejects.
 
-### Anchored
+### Keep
 
-1. The query looks up the anchor for the last multiple of `--anchor-spacing` at
-   or before the window's start. That node lies under 1.5 spacings before the
-   window, and the query walks the reference from it to the window.
-2. The query reads the samples at the anchor node. Each sample names the
-   haplotype passing there, so the query keeps the samples of the chosen
-   haplotypes and ignores the rest.
-3. Starting from each kept sample, the query follows the walk of that haplotype
-   forward through the window. The sample already identifies the walk, so no
-   sample search follows.
-4. A chosen haplotype has no sample at the anchor when the contig starts after
-   the anchor or the walk bypasses that node. The query then looks for a sample
-   of that haplotype on the reference nodes in the window, walks back from that
-   sample to where the haplotype joins the reference, then forward as in step 3.
-5. If a walk never reaches the window, for example because the contig ends
-   first, or a haplotype in step 4 has no such sample, the query redoes the
-   window by the sampled route. `gbz-base-query --stats` prints the reason.
+1. The query builds the subgraph as the sampled route does, from the reference
+   walk through the window, `context` bp around it and the snarls that `snarls`
+   selects. A piece of a walk is a run of its positions whose nodes all lie in
+   this subgraph.
+2. The query reads the rows at the anchor before the window and the anchor after
+   it. Each row gives the path, position and coordinate of one visit, and the
+   visits place each path. A path with a visit on each side lies between them. A
+   path with a visit on one side ends between the anchors or bypasses the other
+   anchor node, and can lie up to the distance between the anchors from its
+   visit. A path with a sample on the subgraph's nodes and no visit to either
+   anchor is looked for at the next anchors out, up to two on each side, and
+   past those counts as local when it is shorter than the stretch between the
+   outermost anchors read, plus 64 kb.
+3. The query reads the samples on the nodes of the subgraph and checks that each
+   one lies within 32 kb of where its path can lie.
+4. The query walks each chosen haplotype from its visit to the anchor before the
+   window to its visit to the anchor after it, and on to 32 kb past the last
+   piece it finds, and records every piece on the way. A haplotype that passes
+   one anchor on the flipped handle carries an inversion covering that anchor,
+   and traverses the stretch between the anchors backward from there, so the
+   walk goes on through that stretch. A haplotype with a visit on one side is
+   walked from it through the stretch to where the other anchor would be, and
+   that walk counts when the contig ends on the way; when the contig runs on,
+   the query reads the next anchors out for a visit that pairs the first. A
+   chosen haplotype with no visit is walked whole from its start.
+5. `extractPaths` keeps each piece in the orientation whose end nodes are
+   canonical. When the walk found a piece in the other orientation, the query
+   walks on in that orientation and reads the samples of the other orientation
+   at each node until one matches the coordinate, then walks from that sample
+   into the piece.
 
-With the pages cached, 8 HPRC haplotypes take 0.4-1 s by this route, against 2-9
-s for the sampled query of all 464
+The checks fail when an anchor is missing, when a chosen haplotype has no visit
+a walk can start from, when a sample in step 3 lies outside where its path can
+lie, when a walk in step 4 reaches its cap, or when a twin in step 5 stays out
+of reach. The query then identifies every walk on the same subgraph and drops
+the haplotypes the predicate rejects. A sample outside where its path can lie
+comes from a segmental duplication or a collapsed paralog, where a haplotype
+crosses the window's nodes again hundreds of kb away: 130-270 kb away at IGL on
+HPRC chr22. At AMY1 in HPRC v2.1, one contig starts inside the window and passes
+the stretch between the anchors again 500 kb later, in reverse. The query also
+identifies every walk when more than 32 chosen paths pass the anchors, because
+the sampled route took less time than the walks for 42 haplotypes.
+`gbz-base-query --stats` prints the reason.
+
+On HPRC chr22, over 58 windows at `context` 0 and 1000 with five keep sets, the
+keep route answered 494 of 580 queries with anchors every 131,072 bp and 491
+with anchors every 32,768 bp, and matched the sampled route's walks in each. The
+other queries, all in LCR22, IGL and GSTT, went to the sampled route. With the
+pages cached, the keep route's median was 121 ms and 81 ms on the two indexes,
+against 787 ms and 767 ms for the sampled route
 ([performance.md](performance.md#a-subset-of-the-haplotypes)).
