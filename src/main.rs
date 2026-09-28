@@ -19,7 +19,10 @@ index.db. Give graph.gbz.db alongside graph.gbz to check that the two match.
 
 Walks every path in both orientations and writes a sample every --interval bp
 (default 4096) into table HaplotypeSamples, plus the path lengths into
-HaplotypeLengths. The path start and end are always sampled.
+HaplotypeLengths. The path start and end are always sampled. The reference
+paths, or those of --anchor-sample, take a sample every --reference-interval bp
+instead, so a query whose subgraph reaches the reference far from its window
+finds a reference sample there.
 
 Anchors: along every reference path (the paths gbz-base indexes for random
 access), or only those of one sample with --anchor-sample, one anchor node is
@@ -42,6 +45,9 @@ Options:
   --interval BP        bp between samples along a path (default 4096)
   --anchor-spacing BP  bp between anchors along a reference path (default 32768)
   --anchor-sample NAME anchor only the reference paths of this sample
+  --reference-interval BP
+                       bp between samples along a reference path
+                       (default: --interval)
   --forward-only       sample only the forward orientation of each path
   --overwrite          replace index.db if it exists
   --threads N          walker threads for the GBZ route
@@ -57,6 +63,7 @@ struct Args {
     interval: usize,
     anchor_spacing: usize,
     anchor_sample: Option<String>,
+    reference_interval: usize,
     forward_only: bool,
     threads: usize,
 }
@@ -66,6 +73,7 @@ fn parse_args() -> Args {
     let mut interval = 4096;
     let mut anchor_spacing = 32768;
     let mut anchor_sample = None;
+    let mut reference_interval = None;
     let mut forward_only = false;
     let mut from_db = false;
     let mut overwrite = false;
@@ -93,6 +101,13 @@ fn parse_args() -> Args {
                     process::exit(1);
                 }));
             }
+            "--reference-interval" => {
+                let value = iter.next().unwrap_or_default();
+                reference_interval = Some(value.parse().unwrap_or_else(|_| {
+                    eprintln!("Invalid --reference-interval: {}", value);
+                    process::exit(1);
+                }));
+            }
             "--threads" => {
                 let value = iter.next().unwrap_or_default();
                 threads = value.parse().unwrap_or_else(|_| {
@@ -111,7 +126,8 @@ fn parse_args() -> Args {
         }
     }
     let valid = if from_db { positional.len() == 2 } else { positional.len() == 2 || positional.len() == 3 };
-    if !valid || interval == 0 || threads == 0 {
+    let reference_interval = reference_interval.unwrap_or(interval);
+    if !valid || interval == 0 || reference_interval == 0 || threads == 0 {
         eprint!("{}", USAGE);
         process::exit(1);
     }
@@ -122,7 +138,7 @@ fn parse_args() -> Args {
         let gbz = positional.remove(0);
         (Some(gbz), positional.pop())
     };
-    Args { gbz, db, output, overwrite, interval, anchor_spacing, anchor_sample, forward_only, threads }
+    Args { gbz, db, output, overwrite, interval, anchor_spacing, anchor_sample, reference_interval, forward_only, threads }
 }
 
 #[derive(Clone, Copy)]
@@ -385,7 +401,7 @@ fn orientations(args: &Args) -> Vec<Orientation> {
     }
 }
 
-fn walk_paths(source: &dyn PathSource, handles: std::ops::Range<usize>, args: &Args, anchors: &NodeSet, label: &str) -> (Vec<Sample>, Vec<(usize, usize)>) {
+fn walk_paths(source: &dyn PathSource, handles: std::ops::Range<usize>, args: &Args, anchors: &Anchors, label: &str) -> (Vec<Sample>, Vec<(usize, usize)>) {
     let mut samples = Vec::new();
     let mut lengths = Vec::new();
     let started = Instant::now();
@@ -393,8 +409,9 @@ fn walk_paths(source: &dyn PathSource, handles: std::ops::Range<usize>, args: &A
     let mut walked_bp: usize = 0;
     for (done, path_handle) in handles.enumerate() {
         let mut length = 0;
+        let interval = if anchors.reference_paths.contains(&path_handle) { args.reference_interval } else { args.interval };
         for &orientation in orientations(args).iter() {
-            length = walk(source, path_handle, orientation, args.interval, anchors, &mut samples);
+            length = walk(source, path_handle, orientation, interval, &anchors.nodes, &mut samples);
         }
         walked_bp += length;
         lengths.push((path_handle, length));
@@ -408,7 +425,7 @@ fn walk_paths(source: &dyn PathSource, handles: std::ops::Range<usize>, args: &A
 struct Anchors {
     nodes: NodeSet,
     rows: Vec<Anchor>,
-    reference_paths: usize,
+    reference_paths: BTreeSet<usize>,
 }
 
 fn anchored_paths(source: &dyn PathSource, args: &Args) -> Vec<usize> {
@@ -447,10 +464,10 @@ fn anchors_gbz(graph: &GBZ, args: &Args) -> Anchors {
     }
     let nodes = anchor_set(&source, &rows);
     eprintln!("Chose {} anchors on {} distinct nodes over {} reference paths at {} bp spacing in {:.0} s", rows.len(), nodes.len(), reference_paths.len(), args.anchor_spacing, started.elapsed().as_secs_f64());
-    Anchors { nodes, rows, reference_paths: reference_paths.len() }
+    Anchors { nodes, rows, reference_paths: reference_paths.into_iter().collect() }
 }
 
-fn walk_gbz(graph: &GBZ, paths: usize, args: &Args, anchors: &NodeSet) -> (Vec<Sample>, Vec<(usize, usize)>) {
+fn walk_gbz(graph: &GBZ, paths: usize, args: &Args, anchors: &Anchors) -> (Vec<Sample>, Vec<(usize, usize)>) {
     let chunk = (paths + args.threads - 1) / args.threads;
     let started = Instant::now();
     let results: Vec<(Vec<Sample>, Vec<(usize, usize)>)> = thread::scope(|scope| {
@@ -536,6 +553,7 @@ fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], pat
         }
         let mut write_tag = transaction.prepare("INSERT INTO Tags(key, value) VALUES (?1, ?2)").unwrap();
         write_tag.execute(params!["haplotype_index_interval", args.interval.to_string()]).unwrap();
+        write_tag.execute(params!["haplotype_index_reference_interval", args.reference_interval.to_string()]).unwrap();
         write_tag.execute(params!["haplotype_index_orientations", if args.forward_only { "forward" } else { "both" }]).unwrap();
         write_tag.execute(params!["haplotype_index_paths", paths.to_string()]).unwrap();
         write_tag.execute(params!["haplotype_index_nodes", nodes.to_string()]).unwrap();
@@ -543,7 +561,7 @@ fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], pat
             let anchor_tags = [
                 ("haplotype_index_anchor_spacing", args.anchor_spacing.to_string()),
                 ("haplotype_index_anchor_rule", ANCHOR_RULE.to_string()),
-                ("haplotype_index_anchor_paths", anchors.reference_paths.to_string()),
+                ("haplotype_index_anchor_paths", anchors.reference_paths.len().to_string()),
                 ("haplotype_index_anchor_nodes", anchors.nodes.len().to_string()),
                 ("haplotype_index_anchor_sample", args.anchor_sample.clone().unwrap_or_default()),
             ];
@@ -583,8 +601,9 @@ fn walk_db(db: &str, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>, Anchors)
     let rows = anchor_rows(&source, &reference_paths, args.anchor_spacing);
     let nodes = anchor_set(&source, &rows);
     eprintln!("Chose {} anchors on {} distinct nodes over {} reference paths at {} bp spacing", rows.len(), nodes.len(), reference_paths.len(), args.anchor_spacing);
-    let (samples, lengths) = walk_paths(&source, 0..paths, args, &nodes, "database walk");
-    (samples, lengths, Anchors { nodes, rows, reference_paths: reference_paths.len() })
+    let anchors = Anchors { nodes, rows, reference_paths: reference_paths.into_iter().collect() };
+    let (samples, lengths) = walk_paths(&source, 0..paths, args, &anchors, "database walk");
+    (samples, lengths, anchors)
 }
 
 fn main() {
@@ -626,7 +645,7 @@ fn main() {
                 }
             }
             let anchors = anchors_gbz(&graph, &args);
-            let (samples, lengths) = walk_gbz(&graph, paths, &args, &anchors.nodes);
+            let (samples, lengths) = walk_gbz(&graph, paths, &args, &anchors);
             (samples, lengths, paths, nodes, anchors)
         }
         None => {
@@ -649,7 +668,7 @@ mod tests {
     }
 
     fn args(interval: usize, anchor_spacing: usize) -> Args {
-        Args { gbz: None, db: Some(split_contig()), output: String::new(), overwrite: false, interval, anchor_spacing, anchor_sample: None, forward_only: false, threads: 1 }
+        Args { gbz: None, db: Some(split_contig()), output: String::new(), overwrite: false, interval, anchor_spacing, anchor_sample: None, reference_interval: interval, forward_only: false, threads: 1 }
     }
 
     fn forward_nodes(source: &dyn PathSource, path_handle: usize) -> Vec<(usize, usize, usize)> {
@@ -682,7 +701,7 @@ mod tests {
     fn every_reference_path_gets_its_first_node_and_the_most_visited_node_nearest_each_multiple() {
         let spacing = 300;
         let (_, _, anchors) = walk_db(&split_contig(), &args(200, spacing));
-        assert_eq!(anchors.reference_paths, 2);
+        assert_eq!(anchors.reference_paths.len(), 2);
         let checked = with_source(|source| {
             let mut checked = 0;
             for &path_handle in source.indexed_paths(None).iter() {
@@ -743,8 +762,36 @@ mod tests {
         only.anchor_sample = Some("GRCh38".to_string());
         let (_, _, anchors) = walk_db(&split_contig(), &only);
         let (_, _, all) = walk_db(&split_contig(), &args(200, 300));
-        assert_eq!(anchors.reference_paths, 2);
+        assert_eq!(anchors.reference_paths.len(), 2);
         assert_eq!(anchors.rows.len(), all.rows.len());
+    }
+
+    #[test]
+    fn a_reference_interval_samples_only_the_reference_paths_more_densely() {
+        let mut dense = args(200, 0);
+        dense.reference_interval = 20;
+        let (with, _, anchors) = walk_db(&split_contig(), &dense);
+        let (without, _, _) = walk_db(&split_contig(), &args(200, 0));
+        let per_path = |samples: &[Sample], handle: usize| -> Vec<u32> {
+            let mut offsets: Vec<u32> =
+                samples.iter().filter(|s| s.path_handle as usize == handle && s.orientation == Orientation::Forward as u8).map(|s| s.path_offset).collect();
+            offsets.sort_unstable();
+            offsets
+        };
+        assert_eq!(anchors.reference_paths.len(), 2);
+        with_source(|source| {
+            for handle in 0..6 {
+                if !anchors.reference_paths.contains(&handle) {
+                    assert_eq!(per_path(&with, handle), per_path(&without, handle));
+                    continue;
+                }
+                let nodes = forward_nodes(source, handle);
+                let longest = nodes.iter().map(|n| n.2).max().unwrap() as u32;
+                let offsets = per_path(&with, handle);
+                assert!(offsets.len() > per_path(&without, handle).len());
+                assert!(offsets.windows(2).all(|w| w[1] - w[0] < 20 + longest));
+            }
+        });
     }
 
     #[test]
