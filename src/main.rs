@@ -657,6 +657,7 @@ fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], pat
                 ("haplotype_index_stray_context", args.stray_context.to_string()),
                 ("haplotype_index_stray_bound", strays::BOUND.to_string()),
                 ("haplotype_index_stray_chunk", strays::CHUNK.to_string()),
+                ("haplotype_index_stray_tolerance", strays::TOLERANCE.to_string()),
                 ("haplotype_index_stray_samples", strays.samples.join(",")),
                 ("haplotype_index_stray_rows", strays.rows.len().to_string()),
                 ("haplotype_index_stray_rule", strays::RULE.to_string()),

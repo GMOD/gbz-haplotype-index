@@ -10,7 +10,10 @@
 // reference span of its section's two visits, those visits being to adjacent
 // anchors of one reference path, or within BOUND of that span on the reference
 // and within BOUND of that end's visit along the path. The reader walks every
-// such section of a chosen path, BOUND past both ends.
+// such section of a chosen path, BOUND past both ends. A node keeps one locus
+// for all of its loci within TOLERANCE of it, so the test takes each kept locus
+// as the TOLERANCE either side of it, and the reader widens its row lookup by
+// TOLERANCE.
 // Every other visit is a stray. Strays cluster into rows of at most CHUNK bp on
 // the reference and along the path, each with the GBWT position of its first
 // visit, so the reader walks a chosen path's rows forward from there.
@@ -26,10 +29,11 @@ use std::thread;
 use std::time::Instant;
 
 pub const BOUND: i64 = 32768;
+pub const TOLERANCE: i64 = 4096;
 pub const CHUNK: i64 = 16384;
 const EMPTY: u64 = 0;
 
-pub const RULE: &str = "HaplotypeStrays lists, per reference sample with anchors, every visit of a path to a node with a locus its walks from anchor visits do not reach: a node's loci are the reference positions within the stray context of it in the graph and the reference visits beside it along each path; a visit is reached when each locus lies in the reference span of its section's two visits to adjacent anchors of one reference path, or within 32768 bp of that span and of that end's visit along the path; rows cluster strays within 16384 bp on the reference and along the path, with the GBWT position of the first";
+pub const RULE: &str = "HaplotypeStrays lists, per reference sample with anchors, every visit of a path to a node with a locus its walks from anchor visits do not reach: a node's loci are the reference positions within the stray context of it in the graph and the reference visits beside it along each path; a visit is reached when each locus lies in the reference span of its section's two visits to adjacent anchors of one reference path, or within 32768 bp of that span and of that end's visit along the path, each kept locus standing for the 4096 bp either side of it; rows cluster strays within 16384 bp on the reference and along the path, with the GBWT position of the first";
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Stray {
@@ -54,11 +58,11 @@ fn unpack(locus: u64) -> (usize, i64) {
 fn close(a: u64, b: u64) -> bool {
     let (ha, oa) = unpack(a);
     let (hb, ob) = unpack(b);
-    ha == hb && (oa - ob).abs() <= BOUND
+    ha == hb && (oa - ob).abs() <= TOLERANCE
 }
 
 // Up to two loci per node in place; a node with more spills all of them into
-// a shared map. Loci within BOUND of one another on a path count once.
+// a shared map. A locus within TOLERANCE of a kept one on its path counts as that one.
 struct Loci {
     slots: Vec<[AtomicU64; 2]>,
     spilled: Vec<AtomicU64>,
@@ -247,11 +251,13 @@ impl Sample {
             };
             for locus in self.loci.of(support::node_id(pos.node)) {
                 let (handle, at) = unpack(locus);
+                let (first, last) = (at - TOLERANCE, at + TOLERANCE);
                 let reached = span.map_or(false, |(h, lo, plo, hi, phi)| {
+                    let near_lo = (offset - plo).abs() <= BOUND;
+                    let near_hi = (offset - phi).abs() <= BOUND;
                     h == handle
-                        && ((lo <= at && at <= hi)
-                            || (at < lo && lo - at <= BOUND && (offset - plo).abs() <= BOUND)
-                            || (at > hi && at - hi <= BOUND && (offset - phi).abs() <= BOUND))
+                        && first >= lo - if near_lo { BOUND } else { 0 }
+                        && last <= hi + if near_hi { BOUND } else { 0 }
                 });
                 if !reached {
                     strays.push((locus, offset, i));
