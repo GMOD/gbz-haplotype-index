@@ -57,10 +57,10 @@ rest of this page uses it for the index entry.
 ```bash
 cargo install gbz-haplotype-index
 
-gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 --reference-interval 256 graph.gbz graph.haplotype-index.db
+gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 graph.gbz graph.haplotype-index.db
 
 # without the GBZ, reading paths from the database
-gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 --reference-interval 256 --from-db graph.gbz.db graph.haplotype-index.db
+gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 --from-db graph.gbz.db graph.haplotype-index.db
 ```
 
 Give `graph.gbz.db` before the index path to check that it matches the GBZ, and
@@ -76,11 +76,13 @@ paths, or those of `--anchor-sample`, and defaults to `--interval`. A query that
 uses the `keep` option checks every sample on the subgraph's nodes against where
 the anchors place its path ([below](#keep)), so a reference sample on a stretch
 of the reference that the subgraph reaches far from the window sends the query
-to the sampled route. Those stretches are about twice `context` long: 129-280 bp
-at the default `context` of 100 at IGL on HPRC chr22. On the HPRC chr22 graph,
-`--reference-interval 256` made the index 9.8% larger than sampling GRCh38 every
-16,384 bp like the haplotypes, 128 made it 15.8% larger, and 1,024 made it 3.5%
-larger.
+to the sampled route. Those stretches are about twice `context` long, and a
+stretch holds a sample for certain only when it is longer than the interval plus
+its longest node. Over 58 windows of the HPRC chr22 graph, counting the samples
+of both orientations, `--reference-interval 256` put a sample on 57 of 57 far
+stretches at `context` 1000 and on 48 of 59 at `context` 100, where they are
+67-428 bp long. It made the index 9.8% larger than sampling GRCh38 every 16,384
+bp like the haplotypes; 128 bp made it 15.8% larger and 1,024 bp 3.5% larger.
 
 Keep the default of sampling both orientations. `open` rejects an index built
 with `--forward-only`, because about half the contigs in a graph like HPRC's run
@@ -181,24 +183,33 @@ schematic is hand-written SVG.
    anchor node, and can lie up to the distance between the anchors from its
    visit. The query also reads the next two anchors out on each side, so a path
    that bypasses both near anchor nodes is placed from a wider visit, and a
-   visit on one side can pair one on the other. A path with a sample on the
-   subgraph's nodes and no visit to any of these anchors counts as local when it
-   is shorter than the stretch between the outermost anchors, plus 64 kb.
+   visit on one side can pair one on the other. A path whose visits lie more
+   than 32 kb outside the stretches its paired visits cover passes the anchors
+   from two copies of the region. A path with a sample on the subgraph's nodes
+   and no visit to any of these anchors counts as local when it is shorter than
+   the stretch between the outermost anchors, plus 64 kb.
 3. The query reads the samples on the nodes of the subgraph and checks that each
-   one lies within 32 kb of where its path can lie.
+   one lies within 16 kb of where its path can lie.
 4. The query walks each chosen haplotype from its visit to the anchor before the
-   window to its visit to the anchor after it, and on to 32 kb past the last
-   piece it finds, and records every piece on the way. A haplotype that passes
-   one anchor on the flipped handle carries an inversion covering that anchor,
-   and traverses the stretch between the anchors backward from there, so the
-   walk goes on through that stretch, and each walk also goes back 32 kb before
-   the first piece it found. A haplotype with a visit on one side is walked from
-   the row that heads into the window through the stretch to where the other
-   anchor would be, and that walk counts when the contig ends on the way. A
-   chosen haplotype with no visit and a sample in the subgraph is walked whole
-   from its start. A chosen haplotype with no visit to any of the anchors read
-   and no sample in the subgraph is invisible to the route, and its pass stays
-   out of the result when another chosen haplotype was seen.
+   window to its visit to the anchor after it, and on until it is 32 kb past
+   both that visit and the last piece it found, and records every piece on the
+   way. A haplotype that passes one anchor on the flipped handle carries an
+   inversion covering that anchor, and traverses the stretch between the anchors
+   backward from there, so the walk goes on through that stretch. Each walk also
+   goes back until it is 32 kb before both the near visit and the first piece it
+   found, so it covers every offset the check in step 3 allows. A haplotype with
+   a visit on one side is walked from the row that heads into the window through
+   the stretch to where the other anchor would be, and that walk counts when the
+   contig ends on the way. A chosen haplotype with no visit and a sample in the
+   subgraph is walked whole from its start, and so is a chosen fragment of a
+   contig when a neighbouring fragment of that contig passes the anchors and the
+   fragment's offset in the contig puts it within 32 kb of where that fragment
+   can lie. Any other chosen path with no visit to the anchors read and no
+   sample in the subgraph is invisible to the route, and its pass stays out of
+   the result when another chosen haplotype was seen. A fragment is often not a
+   neighbour: at chr22:12,034,905 on HPRC, `HG00097#2#CM094088.1[521665]` passes
+   the window while the fragment of that contig at the anchors starts 6.2 Mb
+   further along it.
 5. `extractPaths` keeps each piece in the orientation whose end nodes are
    canonical. When the walk found a piece in the other orientation, the query
    walks on in that orientation and reads the samples of the other orientation
@@ -207,29 +218,33 @@ schematic is hand-written SVG.
 
 The checks fail when an anchor is missing, when a chosen haplotype has no visit
 a walk can start from, when no chosen haplotype at all has a visit or a sample
-in the subgraph although the predicate accepts a path, when a path with a sample
-in the subgraph and no visit is too long to lie between the anchors, when a
-sample in step 3 lies outside where its path can lie, when a walk in step 4
-reaches its cap or a one-sided walk runs on past the stretch without the contig
-ending, or when a twin in step 5 stays out of reach. The query then identifies
-every walk on the same subgraph and drops the haplotypes the predicate rejects.
-The query also identifies every walk when more than 32 chosen paths pass the
-anchors, because the sampled route took less time than the walks for 42
-haplotypes. `gbz-base-query --stats` prints the reason.
+in the subgraph although the predicate accepts a path, when a path passes the
+anchors from two copies of the region, when a path with a sample in the subgraph
+and no visit, or a chosen fragment beside its contig's visits, is too long to
+lie between the anchors, when a sample in step 3 lies outside where its path can
+lie, when a walk in step 4 reaches its cap or a one-sided walk runs on past the
+stretch without the contig ending, or when a twin in step 5 stays out of reach.
+The query then identifies every walk on the same subgraph and drops the
+haplotypes the predicate rejects. The query also identifies every walk when more
+than 32 chosen paths pass the anchors, because the sampled route took less time
+than the walks for 42 haplotypes. `gbz-base-query --stats` prints the reason.
 
 A sample lies outside where its path can lie when the subgraph reaches a stretch
 that the path passes far from the window. At IGL on HPRC chr22, a few haplotypes
 take rare edges between the window and stretches that GRCh38 passes 270-670 kb
 before it, so `context` pulls those stretches into the subgraph. Every haplotype
 that passes such a stretch has a piece there that no walk between the anchors
-reaches, and the check depends on a sample landing on one of the stretches. At
-`context` 100, an index built with `--reference-interval 256` put a GRCh38
-sample on 15 of the 21 stretches in two IGL windows, and 128 bp put one on
-all 21. Sampling GRCh38 every 16,384 bp, like the haplotypes, put one on 2. In a
-collapsed paralog, a haplotype passes the window's nodes again far away, on
-nodes GRCh38 does not visit, so only a sample of that haplotype can land on the
-pass. At AMY1 in HPRC v2.1, one contig starts inside the window and passes the
-stretch between the anchors again 500 kb later, in reverse.
+reaches, and the check depends on a sample landing on one of the stretches.
+
+In a collapsed paralog, a haplotype passes the window's nodes again from a copy
+of the region far away, often on nodes GRCh38 does not visit there, so only a
+sample of that haplotype can land on the pass, and the haplotype's samples fall
+every `--interval` bp. On HPRC chr22 such passes, 60 kb to 8 Mb from the
+haplotype's anchor visits, lie beside anchor nodes that some haplotype visits
+from two copies of the region, and the query then identifies every walk; one
+window at chr22:21,431,272 still drops a pass with `keep` set to every
+haplotype. At AMY1 in HPRC v2.1, one contig starts inside the window and passes
+the stretch between the anchors again 500 kb later, in reverse.
 
 On HPRC chr22, over 58 windows at `context` 0 and 1000 with five keep sets, the
 keep route answered 486 of 580 queries with anchors every 131,072 bp and 482
