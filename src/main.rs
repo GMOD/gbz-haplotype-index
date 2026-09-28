@@ -5,6 +5,8 @@ use gbz_base::{GBZBase, GraphInterface};
 use rusqlite::{params, Connection};
 use simple_sds::serialize;
 
+mod strays;
+
 use std::collections::BTreeSet;
 use std::env;
 use std::process;
@@ -38,6 +40,13 @@ position, with its own coordinate, from the rows at one node.
 The index records the graph's path and node counts so the reader catches a
 mismatch at open.
 
+Strays: for each reference sample with anchors, table HaplotypeStrays lists
+the visits of other paths that the keep route's walks from anchor visits do
+not reach, as rows the reader walks for the paths it keeps. A node's loci are
+the reference positions within --stray-context bp of it in the graph and the
+reference visits beside it along each path, so the table holds for queries
+whose context is at most --stray-context. --stray-context 0 writes none.
+
 With --from-db the walk reads node records from the database itself, so the
 GBZ is not needed. Walking a GBZ uses --threads (default: all cores).
 
@@ -48,6 +57,8 @@ Options:
   --reference-interval BP
                        bp between samples along a reference path
                        (default: --interval)
+  --stray-context BP   the largest query context HaplotypeStrays covers
+                       (default 1000)
   --forward-only       sample only the forward orientation of each path
   --overwrite          replace index.db if it exists
   --threads N          walker threads for the GBZ route
@@ -64,6 +75,7 @@ struct Args {
     anchor_spacing: usize,
     anchor_sample: Option<String>,
     reference_interval: usize,
+    stray_context: usize,
     forward_only: bool,
     threads: usize,
 }
@@ -74,6 +86,7 @@ fn parse_args() -> Args {
     let mut anchor_spacing = 32768;
     let mut anchor_sample = None;
     let mut reference_interval = None;
+    let mut stray_context = 1000;
     let mut forward_only = false;
     let mut from_db = false;
     let mut overwrite = false;
@@ -108,6 +121,13 @@ fn parse_args() -> Args {
                     process::exit(1);
                 }));
             }
+            "--stray-context" => {
+                let value = iter.next().unwrap_or_default();
+                stray_context = value.parse().unwrap_or_else(|_| {
+                    eprintln!("Invalid --stray-context: {}", value);
+                    process::exit(1);
+                });
+            }
             "--threads" => {
                 let value = iter.next().unwrap_or_default();
                 threads = value.parse().unwrap_or_else(|_| {
@@ -138,7 +158,7 @@ fn parse_args() -> Args {
         let gbz = positional.remove(0);
         (Some(gbz), positional.pop())
     };
-    Args { gbz, db, output, overwrite, interval, anchor_spacing, anchor_sample, reference_interval, forward_only, threads }
+    Args { gbz, db, output, overwrite, interval, anchor_spacing, anchor_sample, reference_interval, stray_context, forward_only, threads }
 }
 
 #[derive(Clone, Copy)]
@@ -192,6 +212,9 @@ trait PathSource {
     fn visits(&self, handle: usize) -> usize;
     fn indexed_paths(&self, sample: Option<&str>) -> Vec<usize>;
     fn max_node_id(&self) -> usize;
+    fn successors(&self, handle: usize) -> Vec<usize>;
+    fn sample_of(&self, path_handle: usize) -> String;
+    fn path_count(&self) -> usize;
 }
 
 struct GbzSource<'a> {
@@ -239,6 +262,21 @@ impl PathSource for GbzSource<'_> {
     fn max_node_id(&self) -> usize {
         self.graph.max_node()
     }
+
+    fn successors(&self, handle: usize) -> Vec<usize> {
+        self.graph
+            .successors(support::node_id(handle), support::node_orientation(handle))
+            .map_or_else(Vec::new, |edges| edges.map(|(id, o)| support::encode_node(id, o)).collect())
+    }
+
+    fn sample_of(&self, path_handle: usize) -> String {
+        let metadata = self.graph.metadata().unwrap();
+        metadata.sample_name(metadata.path(path_handle).unwrap().sample())
+    }
+
+    fn path_count(&self) -> usize {
+        self.graph.metadata().map_or(0, |m| m.paths())
+    }
 }
 
 struct DbSource<'a> {
@@ -280,6 +318,18 @@ impl PathSource for DbSource<'_> {
 
     fn max_node_id(&self) -> usize {
         self.max_node_id
+    }
+
+    fn successors(&self, handle: usize) -> Vec<usize> {
+        self.interface.borrow_mut().get_record(handle).unwrap().map_or_else(Vec::new, |record| record.successors().collect())
+    }
+
+    fn sample_of(&self, path_handle: usize) -> String {
+        self.interface.borrow_mut().get_path(path_handle).unwrap().map(|path| path.name.sample).unwrap_or_default()
+    }
+
+    fn path_count(&self) -> usize {
+        self.paths
     }
 }
 
@@ -517,9 +567,25 @@ CREATE TABLE HaplotypeAnchors (
     node_handle INTEGER NOT NULL,
     path_offset INTEGER NOT NULL,
     PRIMARY KEY (path_handle, anchor_offset)
+) STRICT;
+CREATE TABLE HaplotypeStrays (
+    reference_handle INTEGER NOT NULL,
+    reference_start INTEGER NOT NULL,
+    reference_end INTEGER NOT NULL,
+    path_handle INTEGER NOT NULL,
+    path_start INTEGER NOT NULL,
+    path_end INTEGER NOT NULL,
+    node_handle INTEGER NOT NULL,
+    node_offset INTEGER NOT NULL,
+    PRIMARY KEY (reference_handle, reference_start, reference_end, path_handle, path_start, path_end, node_handle, node_offset)
 ) STRICT;";
 
-fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], paths: usize, nodes: usize, anchors: &Anchors, args: &Args) {
+struct Strays {
+    rows: Vec<strays::Stray>,
+    samples: Vec<String>,
+}
+
+fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], paths: usize, nodes: usize, anchors: &Anchors, strays: &Strays, args: &Args) {
     let started = Instant::now();
     samples.sort_unstable_by_key(|s| (s.node_handle, s.node_offset));
     eprintln!("Sorted {} samples in {:.0} s", samples.len(), started.elapsed().as_secs_f64());
@@ -551,6 +617,23 @@ fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], pat
         for a in rows {
             write_anchor.execute(params![a.path_handle as i64, a.anchor_offset as i64, a.node_handle as i64, a.path_offset as i64]).unwrap();
         }
+        let mut write_stray = transaction
+            .prepare("INSERT INTO HaplotypeStrays(reference_handle, reference_start, reference_end, path_handle, path_start, path_end, node_handle, node_offset) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
+            .unwrap();
+        for r in strays.rows.iter() {
+            write_stray
+                .execute(params![
+                    r.reference_handle as i64,
+                    r.reference_start as i64,
+                    r.reference_end as i64,
+                    r.path_handle as i64,
+                    r.path_start as i64,
+                    r.path_end as i64,
+                    r.node_handle as i64,
+                    r.node_offset as i64
+                ])
+                .unwrap();
+        }
         let mut write_tag = transaction.prepare("INSERT INTO Tags(key, value) VALUES (?1, ?2)").unwrap();
         write_tag.execute(params!["haplotype_index_interval", args.interval.to_string()]).unwrap();
         write_tag.execute(params!["haplotype_index_reference_interval", args.reference_interval.to_string()]).unwrap();
@@ -569,9 +652,30 @@ fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], pat
                 write_tag.execute(params![key, value]).unwrap();
             }
         }
+        if !strays.samples.is_empty() {
+            let stray_tags = [
+                ("haplotype_index_stray_context", args.stray_context.to_string()),
+                ("haplotype_index_stray_bound", strays::BOUND.to_string()),
+                ("haplotype_index_stray_chunk", strays::CHUNK.to_string()),
+                ("haplotype_index_stray_samples", strays.samples.join(",")),
+                ("haplotype_index_stray_rows", strays.rows.len().to_string()),
+                ("haplotype_index_stray_rule", strays::RULE.to_string()),
+            ];
+            for (key, value) in stray_tags.iter() {
+                write_tag.execute(params![key, value]).unwrap();
+            }
+        }
     }
     transaction.commit().unwrap();
-    eprintln!("Wrote {} samples and {} anchors for {} paths to {} in {:.0} s", samples.len(), anchors.rows.len(), paths, target, started.elapsed().as_secs_f64());
+    eprintln!(
+        "Wrote {} samples, {} anchors and {} stray rows for {} paths to {} in {:.0} s",
+        samples.len(),
+        anchors.rows.len(),
+        strays.rows.len(),
+        paths,
+        target,
+        started.elapsed().as_secs_f64()
+    );
 }
 
 fn count_from_db(db: &str, key: &str) -> usize {
@@ -588,7 +692,7 @@ fn max_node_id_from_db(db: &str) -> usize {
     support::node_id(handle as usize)
 }
 
-fn walk_db(db: &str, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>, Anchors) {
+fn walk_db(db: &str, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>, Anchors, Strays) {
     let paths = count_from_db(db, "paths");
     let max_node_id = max_node_id_from_db(db);
     let database = GBZBase::open(db).unwrap_or_else(|e| {
@@ -603,7 +707,8 @@ fn walk_db(db: &str, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>, Anchors)
     eprintln!("Chose {} anchors on {} distinct nodes over {} reference paths at {} bp spacing", rows.len(), nodes.len(), reference_paths.len(), args.anchor_spacing);
     let anchors = Anchors { nodes, rows, reference_paths: reference_paths.into_iter().collect() };
     let (samples, lengths) = walk_paths(&source, 0..paths, args, &anchors, "database walk");
-    (samples, lengths, anchors)
+    let (rows, samples_with_strays) = strays::strays(&strays::Serial(&source), &anchors, args.anchor_spacing, args.stray_context);
+    (samples, lengths, anchors, Strays { rows, samples: samples_with_strays })
 }
 
 fn main() {
@@ -618,7 +723,7 @@ fn main() {
             process::exit(1);
         });
     }
-    let (samples, lengths, paths, nodes, anchors) = match &args.gbz {
+    let (samples, lengths, paths, nodes, anchors, strays) = match &args.gbz {
         Some(gbz) => {
             let started = Instant::now();
             let graph: GBZ = serialize::load_from(gbz).unwrap_or_else(|e| {
@@ -646,17 +751,20 @@ fn main() {
             }
             let anchors = anchors_gbz(&graph, &args);
             let (samples, lengths) = walk_gbz(&graph, paths, &args, &anchors);
-            (samples, lengths, paths, nodes, anchors)
+            let source = GbzSource { graph: &graph };
+            let (rows, samples_with_strays) =
+                strays::strays(&strays::Threads { source: &source, threads: args.threads }, &anchors, args.anchor_spacing, args.stray_context);
+            (samples, lengths, paths, nodes, anchors, Strays { rows, samples: samples_with_strays })
         }
         None => {
             let db = args.db.as_ref().unwrap();
             let paths = count_from_db(db, "paths");
             let nodes = count_from_db(db, "nodes");
-            let (samples, lengths, anchors) = walk_db(db, &args);
-            (samples, lengths, paths, nodes, anchors)
+            let (samples, lengths, anchors, strays) = walk_db(db, &args);
+            (samples, lengths, paths, nodes, anchors, strays)
         }
     };
-    write(&args.output, samples, &lengths, paths, nodes, &anchors, &args);
+    write(&args.output, samples, &lengths, paths, nodes, &anchors, &strays, &args);
 }
 
 #[cfg(test)]
@@ -668,7 +776,19 @@ mod tests {
     }
 
     fn args(interval: usize, anchor_spacing: usize) -> Args {
-        Args { gbz: None, db: Some(split_contig()), output: String::new(), overwrite: false, interval, anchor_spacing, anchor_sample: None, reference_interval: interval, forward_only: false, threads: 1 }
+        Args {
+            gbz: None,
+            db: Some(split_contig()),
+            output: String::new(),
+            overwrite: false,
+            interval,
+            anchor_spacing,
+            anchor_sample: None,
+            reference_interval: interval,
+            stray_context: 1000,
+            forward_only: false,
+            threads: 1,
+        }
     }
 
     fn forward_nodes(source: &dyn PathSource, path_handle: usize) -> Vec<(usize, usize, usize)> {
@@ -700,7 +820,7 @@ mod tests {
     #[test]
     fn every_reference_path_gets_its_first_node_and_the_most_visited_node_nearest_each_multiple() {
         let spacing = 300;
-        let (_, _, anchors) = walk_db(&split_contig(), &args(200, spacing));
+        let (_, _, anchors, _) = walk_db(&split_contig(), &args(200, spacing));
         assert_eq!(anchors.reference_paths.len(), 2);
         let checked = with_source(|source| {
             let mut checked = 0;
@@ -733,7 +853,7 @@ mod tests {
 
     #[test]
     fn every_visit_through_an_anchor_node_is_sampled_in_both_orientations() {
-        let (samples, lengths, anchors) = walk_db(&split_contig(), &args(200, 300));
+        let (samples, lengths, anchors, _) = walk_db(&split_contig(), &args(200, 300));
         assert_eq!(lengths.len(), 6);
         let mut rows_by_handle = std::collections::BTreeMap::new();
         for sample in samples.iter() {
@@ -760,8 +880,8 @@ mod tests {
     fn an_anchor_sample_keeps_the_anchors_of_that_samples_paths() {
         let mut only = args(200, 300);
         only.anchor_sample = Some("GRCh38".to_string());
-        let (_, _, anchors) = walk_db(&split_contig(), &only);
-        let (_, _, all) = walk_db(&split_contig(), &args(200, 300));
+        let (_, _, anchors, _) = walk_db(&split_contig(), &only);
+        let (_, _, all, _) = walk_db(&split_contig(), &args(200, 300));
         assert_eq!(anchors.reference_paths.len(), 2);
         assert_eq!(anchors.rows.len(), all.rows.len());
     }
@@ -770,8 +890,8 @@ mod tests {
     fn a_reference_interval_samples_only_the_reference_paths_more_densely() {
         let mut dense = args(200, 0);
         dense.reference_interval = 20;
-        let (with, _, anchors) = walk_db(&split_contig(), &dense);
-        let (without, _, _) = walk_db(&split_contig(), &args(200, 0));
+        let (with, _, anchors, _) = walk_db(&split_contig(), &dense);
+        let (without, _, _, _) = walk_db(&split_contig(), &args(200, 0));
         let per_path = |samples: &[Sample], handle: usize| -> Vec<u32> {
             let mut offsets: Vec<u32> =
                 samples.iter().filter(|s| s.path_handle as usize == handle && s.orientation == Orientation::Forward as u8).map(|s| s.path_offset).collect();
@@ -796,7 +916,7 @@ mod tests {
 
     #[test]
     fn a_zero_spacing_marks_nothing_and_leaves_the_per_path_samples_alone() {
-        let (with, _, anchors) = walk_db(&split_contig(), &args(200, 0));
+        let (with, _, anchors, _) = walk_db(&split_contig(), &args(200, 0));
         assert_eq!(anchors.nodes.len(), 0);
         assert!(anchors.rows.is_empty());
         assert_eq!(with.len(), 42);
