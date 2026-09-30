@@ -8,9 +8,12 @@ haplotype and coordinates.
 ```bash
 cargo install gbz-haplotype-index
 
-gbz-haplotype-index --interval 16384 --anchor-sample GRCh38 graph.gbz graph.haplotype-index.db
-gbz-haplotype-index --from-db graph.gbz.db graph.haplotype-index.db
+gbz-haplotype-index --interval 16384 graph.gbz graph.gbz.db graph.haplotype-index.db
+gbz-haplotype-index --interval 16384 --from-db graph.gbz.db graph.haplotype-index.db
 ```
+
+Give `graph.gbz.db` with the GBZ: the tool reads the top-level snarls from it,
+which a query that keeps a few haplotypes and fills snarls needs.
 
 [@gmod/gbz-base](https://github.com/GMOD/gbz-base-js) reads the index beside the
 database, locally or over HTTP. The
