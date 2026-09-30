@@ -277,14 +277,14 @@ fragments and contigs that visit no anchor, and reads the pieces from the GFA.
 Over 18,500 graphs, 582,634 sampled queries and 7,322,972 queries that use the
 `keep` option returned those pieces, 6,974,349 of the second on the keep route.
 
-An audit then set the index options against the route: samples at anchors and
-path ends only, bins of 1 bp, bounds under the spacing, windows aimed at the
-bound around each anchor. Over 1,706,363 keep-route queries in seven such runs,
-none differed from the GFA. The audit found one omission by reasoning, at an
-anchor whose node starts exactly `bound` past the window's bins, and fixed it
-with a fixture (`test/data/anchor-at-bound.gfa`); the trigger needs a node
-longer than half the anchor spacing, and the longest node in HPRC v2.1 is 342
-bp.
+An audit then set the index options against the route, with samples at anchors
+and path ends only, bins of 1 bp, bounds under the spacing, and windows aimed at
+the bound around each anchor. The keep route answered 1,706,363 queries in seven
+such runs, and none differed from the GFA. The audit found one omission by
+reasoning, at an anchor whose node starts exactly `bound` past the window's
+bins, and fixed it with a fixture (`test/data/anchor-at-bound.gfa`). The trigger
+needs a node longer than half the anchor spacing, and the longest node in HPRC
+v2.1 is 342 bp.
 
 With both files on local disk and their pages in memory, the median query took
 102 ms on the keep route and 169 ms on the sampled route over the random
