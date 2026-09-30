@@ -220,7 +220,7 @@ of that bin. Step 2 checks that the subgraph consists of nodes of the bins the
 window touches, so steps 4 and 5 pass every visit of a chosen haplotype to those
 nodes.
 
-A snarl that the query fills adds nodes that no bin lists. A path that passes
+A snarl that the query fills can add nodes that no bin lists. A path that passes
 one of those nodes enters the snarl through one of its two boundary nodes, which
 the bins list, so a walk passes that visit and the piece runs on into the snarl.
 A path that lies inside the snarl from end to end has a stray row that names the
