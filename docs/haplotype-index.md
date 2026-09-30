@@ -243,4 +243,44 @@ The query identifies every walk when one of these holds, and
 
 ### Measured on HPRC v2.1
 
-MEASURED-PLACEHOLDER
+We ran the index described under
+[Building the haplotype index](#building-the-haplotype-index) from local copies
+of both files, with the scripts in `tools/validate/`.
+
+Each query ran on the keep route and on the sampled route, and we compared the
+GFA and the alignment records of the two:
+
+| Windows                                                                                                                                                          | Queries | Keep route | Identified every walk | Differ |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------: | ---------: | --------------------: | -----: |
+| 1,500 of 300 bp to 100 kb: random, segmental duplications, chromosome ends, acrocentric arms, CHM13, unplaced contigs, anchors that a path visits twice          |   9,000 |      8,986 |                    14 |      0 |
+| 1,330 aimed at the stray rows: the bin of a stray row, a path inside one snarl, the ends of an edge over 16 kb of reference, bin boundaries, anchors, 150-500 kb |  15,780 |     15,772 |                     8 |      0 |
+| 18 at KIV-2, AMY1, MHC, SMN, GSTM1, C4, CFH, and seven places where an earlier route dropped pieces                                                              |     216 |        216 |                     0 |      0 |
+| the first and third rows again, keeping every haplotype                                                                                                          |   3,072 |      3,070 |                     2 |      0 |
+
+The windows of the first row ran with `context` 100 and no snarls, and with
+`context` 1000 and contained snarls. Those of the second and third also ran with
+`context` 0 and contained snarls, and with `context` 1000 and no snarls. Each
+kept one haplotype, one sample, and eight haplotypes. The last row kept every
+haplotype, with the limit of 32 chosen paths lifted, so it compares every walk
+in each window. The 24 queries that identified every walk had more than 32
+chosen paths at the anchors (18) or a walk past its cap (6). The route of 4.1.0,
+which placed each haplotype from its anchor visits and the samples in the
+window, differed in 152 of the first row's queries and dropped 585 pieces.
+
+`gbz-truth` lists the pieces that every path leaves in a subgraph, from the GBZ
+alone. The sampled route returned those pieces, with the same path and
+coordinates, in each of the 8,260 subgraphs of the first two rows: 21,653,445
+pieces.
+
+`test/fuzz/` generates graphs with inversions, duplications, contigs split into
+fragments and contigs that visit no anchor, and reads the pieces from the GFA.
+Over 18,500 graphs, 582,634 sampled queries and 7,322,972 queries that use the
+`keep` option returned those pieces, 6,974,349 of the second on the keep route.
+
+With both files on local disk and their pages in memory, the median query took
+102 ms on the keep route and 169 ms on the sampled route over the random
+windows, 117 ms and 289 ms in segmental duplications, and 144 ms and 1,404 ms at
+unplaced contigs. On a window under 3 kb beside an anchor or a bin boundary, the
+keep route took 62-93 ms and the sampled route 19-25 ms, because the keep route
+walks each chosen haplotype from one anchor to the next, 131 kb apart in this
+index, whatever the window's length.
