@@ -17,11 +17,17 @@ a different choice.
 ## Samples and anchors
 
 A path is one contig of one haplotype, named `sample#haplotype#contig`. The GBWT
-stores each path as a walk, a sequence of positions. A position is a node plus
-the rank of one walk among the walks through that node, so each position belongs
-to exactly one walk. The GBWT maps each position to the next one, and identifies
-a path at the start of its walk, which can be a whole chromosome away from a
-query window. The haplotype index records the path at positions along the way:
+stores each path as a sequence of oriented nodes, once in each orientation. A
+position is a node record plus the rank of one visit among all visits to that
+node, so each position belongs to exactly one path in one orientation, and each
+node record maps every position to the next one along its path. A GBWT file also
+carries document array samples for `locate()`, which map a position back to its
+path. gbwt-rs passes them through unread, and a GBZ-base holds, per node record,
+the edges, the BWT fragment, the sequence and the chain link, and per path its
+two start positions, so the database names a path at those two positions in
+`Paths`, which can be a whole chromosome away from a query window. The haplotype
+index is that sampling, kept beside the database. It records the path at
+positions along the way:
 
 - A **sample** records a position, the path through it, the orientation and the
   coordinate along that path. `gbz-haplotype-index` writes one every
@@ -30,10 +36,12 @@ query window. The haplotype index records the path at positions along the way:
   nearest sample. A larger interval gives a smaller index and longer walks, the
   same trade as the sampled suffix array in an FM-index.
 - An **anchor** is a reference node that most haplotypes in the region visit,
-  one every `--anchor-spacing` bp along each reference path. The haplotype index
-  contains a sample for every visit to an anchor node, so the samples at that
-  node list every haplotype passing it, with the position and coordinate of each
-  visit.
+  one every `--anchor-spacing` bp along each reference path. A reference path
+  here is one gbz-base indexes for random access, which are the paths of the
+  samples in the GBWT tag `reference_samples` and the generic paths, whose
+  sample is `_gbwt_ref`. The haplotype index contains a sample for every visit
+  to an anchor node, so the samples at that node list every haplotype passing
+  it, with the position and coordinate of each visit.
 - A **bin** is `--stray-bin` bp of a reference path, 16,384 by default. For each
   bin, the haplotype index lists the nodes that a query's `context` reaches from
   the reference nodes of the bin, for a `context` up to `--stray-context`. The
@@ -46,7 +54,7 @@ query window. The haplotype index records the path at positions along the way:
   the region far along the path. Each row gives the bin, the path, the stretch
   and the GBWT position of its first visit.
 
-![graph.gbz.db lists the walks at each node by rank and names each path at the start of its walk. The haplotype index adds a sample every --interval bp that maps a position to a path, so a query names a walk from the next sample along it](img/haplotype-samples.svg)
+![graph.gbz.db lists the visits at each node by rank and names each path at its start position. The haplotype index adds a sample every --interval bp that maps a position to a path, so a query names a walk from the next sample along it](img/haplotype-samples.svg)
 
 A query that uses the `keep` option reads the anchor rows around the window, and
 the node lists and stray rows of the bins the window touches.
@@ -62,7 +70,8 @@ anchor nodes, `HaplotypeBinNodes` lists the nodes of each bin, `HaplotypeStrays`
 contains the stray rows, and `HaplotypeLengths` lists the length of each path.
 
 The word "sample" also means an individual, such as `HG002` in a path name. The
-rest of this page uses it for the index entry.
+rest of this page uses it for the index entry, the sense of the GBWT's own
+document array samples.
 
 ## Building the haplotype index
 
