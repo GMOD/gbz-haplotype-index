@@ -99,8 +99,8 @@ reverse-orientation samples.
 For the 10 GB HPRC v2.1 GRCh38 database, the index with 131,072 bp anchors on
 GRCh38 and CHM13 is 8.1 GB. It holds 178.5 million samples, 5.4 million stray
 rows, and node lists of 3.2 MB for 363,000 bins; the stray rows and node lists
-add 0.2 GB. Building it from the GBZ takes 33 minutes on 20 threads and peaks at
-19.5 GB of memory.
+add 0.2 GB. Building it from the GBZ takes 30-33 minutes on 20 threads and peaks
+at 19.9 GB of memory.
 
 ## Using the haplotype index
 
@@ -259,8 +259,9 @@ GFA and the alignment records of the two:
 
 The windows of the first row ran with `context` 100 and no snarls, and with
 `context` 1000 and contained snarls. Those of the second and third also ran with
-`context` 0 and contained snarls, and with `context` 1000 and no snarls. Each
-kept one haplotype, one sample, and eight haplotypes. The last row kept every
+`context` 0 and contained snarls, and with `context` 1000 and no snarls, except
+the 30 windows of 150-500 kb, which ran the first two settings only. Each kept
+one haplotype, one sample, and eight haplotypes. The last row kept every
 haplotype, with the limit of 32 chosen paths lifted, so it compares every walk
 in each window. The 24 queries that identified every walk had more than 32
 chosen paths at the anchors (18) or a walk past its cap (6). The route of 4.1.0,
@@ -283,8 +284,8 @@ the bound around each anchor. The keep route answered 1,706,363 queries in seven
 such runs, and none differed from the GFA. The audit found one omission by
 reasoning, at an anchor whose node starts exactly `bound` past the window's
 bins, and fixed it with a fixture (`test/data/anchor-at-bound.gfa`). The trigger
-needs a node longer than half the anchor spacing, and the longest node in HPRC
-v2.1 is 342 bp.
+needs a node longer than half the anchor spacing, 65,536 bp in this index, and
+the longest node in HPRC v2.1 is 1,024 bp.
 
 With both files on local disk and their pages in memory, the median query took
 102 ms on the keep route and 169 ms on the sampled route over the random
