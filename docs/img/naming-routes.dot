@@ -16,7 +16,6 @@ digraph namingroutes {
 
   query  [label="query a window of a reference path" fillcolor="#ddf4ff" color="#0969da"]
   choose [label="does the query use\nthe keep option,\n{ keep: name => … }\nor --keep NAME?" shape=diamond style=filled margin="0.02,0.02"]
-  anchors [label="does the query leave\nhaplotypes at 'all'?" shape=diamond style=filled margin="0.02,0.02"]
   how    [label="db.getAlignmentsForRange(path, start, end, {\l  keep: name => name.sample === 'HG002',\l})\lgbz-base-query ... --keep HG002 --keep HG00733#1\l"
           shape=note fontname="Courier" fontsize=9 fillcolor="#fff8c5" color="#9a6700"]
   { rank=same; choose; how }
@@ -60,17 +59,19 @@ digraph namingroutes {
     style="rounded"
     margin=10
     k1 [label="build the subgraph the sampled\nroute builds for the window"]
-    k2 [label="read every visit to the anchors near\nthe window, and the window's stray rows\nHaplotypeAnchors, HaplotypeSamples,\nHaplotypeStrays" fillcolor="#dafbe1" color="#1a7f37"]
-    k3 [label="walk each haplotype where keep(name)\nis true between its visits to adjacent\nanchors, and along its stray rows"]
-    k4 [label="does each sample of a chosen\nhaplotype on the window's nodes\nlie in a piece the walks found?" shape=diamond style=filled margin="0.02,0.02"]
-    k1 -> k2 -> k3 -> k4
+    k2 [label="read the node lists and stray rows of the\nbins the window touches, and every visit\nto the anchors near those bins\nHaplotypeBinNodes, HaplotypeStrays,\nHaplotypeAnchors, HaplotypeSamples" fillcolor="#dafbe1" color="#1a7f37"]
+    k3 [label="is every node of the subgraph\nin a node list, or in a snarl\nthat the stray rows cover?" shape=diamond style=filled margin="0.02,0.02"]
+    k4 [label="walk each haplotype where keep(name)\nis true between its visits to adjacent\nanchors, and along its stray rows"]
+    k5 [label="does each sample of a chosen\nhaplotype on the window's nodes\nlie in a piece the walks found?" shape=diamond style=filled margin="0.02,0.02"]
+    k1 -> k2 -> k3
+    k3 -> k4 [label=" yes "]
+    k4 -> k5
   }
 
   choose -> s1 [label=" no "]
-  choose -> anchors [label=" yes "]
-  anchors -> s1 [label=" no " constraint=false]
-  anchors -> k1 [label=" yes "]
-  k4 -> s1 [label=" no " constraint=false]
+  choose -> k1 [label=" yes "]
+  k3 -> s1 [label=" no " constraint=false]
+  k5 -> s1 [label=" no " constraint=false]
   s3 -> out
-  k4 -> out [label=" yes "]
+  k5 -> out [label=" yes "]
 }

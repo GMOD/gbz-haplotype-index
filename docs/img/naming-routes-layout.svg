@@ -39,10 +39,10 @@
 <text x="600" y="234" fill="#57606a" font-size="10">query follows the walk past it</text>
 <text x="600" y="246" fill="#57606a" font-size="10">to the next sample</text>
 
-<text x="20" y="296" fill="#24292f" font-weight="bold">Anchored route</text>
-<text x="20" y="314" fill="#24292f">A query that uses the keep option, <tspan font-family="Courier, monospace" font-size="10">{ keep: name =&gt; … }</tspan> or <tspan font-family="Courier, monospace" font-size="10">--keep NAME</tspan>, reads the samples at one anchor node, which list every</text>
-<text x="20" y="330" fill="#24292f">haplotype passing it, then follows the walks whose name the predicate accepts. The cost grows with the number of haplotypes chosen,</text>
-<text x="20" y="346" fill="#24292f">and the query never reads the other walks.</text>
+<text x="20" y="296" fill="#24292f" font-weight="bold">Keep route</text>
+<text x="20" y="314" fill="#24292f">A query that uses the keep option, <tspan font-family="Courier, monospace" font-size="10">{ keep: name =&gt; … }</tspan> or <tspan font-family="Courier, monospace" font-size="10">--keep NAME</tspan>, reads the rows at the anchor nodes around the window,</text>
+<text x="20" y="330" fill="#24292f">which list every haplotype passing them, then follows the walks whose name the predicate accepts from one anchor to the next.</text>
+<text x="20" y="346" fill="#24292f">The cost grows with the number of haplotypes chosen.</text>
 <g transform="translate(0 16)">
 <rect x="20" y="340" width="590" height="34" fill="#fff8c5" stroke="#9a6700" rx="3"/>
 <text x="28" y="354" font-family="Courier, monospace" font-size="10" fill="#24292f">db.getAlignmentsForRange('GRCh38#0#chr6', start, end, { keep: name => name.sample === 'HG002' })</text>
@@ -50,9 +50,9 @@
 
 </g>
 
-<text x="20" y="412" fill="#24292f">When it built the index, gbz-haplotype-index chose one anchor per multiple k of 131,072 bp along GRCh38#0#chr6: the node with the</text>
-<text x="20" y="428" fill="#24292f">most GBWT positions in the half spacing before k × 131,072. A window at 33,000,000 takes k = 251, the last multiple at or before its</text>
-<text x="20" y="444" fill="#24292f">start, so the query walks 166,478 bp of reference from that anchor. The k = 252 anchor also precedes the window, but 252 × 131,072 does not.</text>
+<text x="20" y="412" fill="#24292f">When it built the haplotype index, gbz-haplotype-index chose one anchor per multiple k of 131,072 bp along GRCh38#0#chr6: the</text>
+<text x="20" y="428" fill="#24292f">node with the most GBWT positions in the half spacing before k × 131,072. A window at 33,000,000 lies between the anchors for</text>
+<text x="20" y="444" fill="#24292f">k = 252 and k = 253, so the query follows each chosen haplotype from its visit to the first to its visit to the second.</text>
 <rect x="42.2" y="500" width="59.4" height="16" fill="#eaeef2"/>
 <rect x="161.1" y="500" width="59.4" height="16" fill="#eaeef2"/>
 <rect x="279.9" y="500" width="59.4" height="16" fill="#eaeef2"/>
@@ -79,13 +79,14 @@
 <text x="695.8" y="482" fill="#57606a" font-size="10" text-anchor="middle">k = 255</text>
 <text x="695.8" y="494" fill="#57606a" font-size="9" text-anchor="middle">33,423,360</text>
 <rect x="39.7" y="498" width="5" height="20" fill="#dafbe1" stroke="#1a7f37" rx="1"/>
-<rect x="158.6" y="498" width="5" height="20" fill="#1a7f37" stroke="#1a7f37" rx="1"/>
-<rect x="277.4" y="498" width="5" height="20" fill="#dafbe1" stroke="#1a7f37" rx="1"/>
-<rect x="396.2" y="498" width="5" height="20" fill="#dafbe1" stroke="#1a7f37" rx="1"/>
+<rect x="158.6" y="498" width="5" height="20" fill="#dafbe1" stroke="#1a7f37" rx="1"/>
+<rect x="277.4" y="498" width="5" height="20" fill="#1a7f37" stroke="#1a7f37" rx="1"/>
+<rect x="396.2" y="498" width="5" height="20" fill="#1a7f37" stroke="#1a7f37" rx="1"/>
 <rect x="515.0" y="498" width="5" height="20" fill="#dafbe1" stroke="#1a7f37" rx="1"/>
 <rect x="633.9" y="498" width="5" height="20" fill="#dafbe1" stroke="#1a7f37" rx="1"/>
 <rect x="310.0" y="494" width="4" height="28" fill="#fff8c5" stroke="#9a6700"/>
-<line x1="161.1" y1="518" x2="200" y2="582" stroke="#1a7f37" stroke-dasharray="3 3"/>
+<line x1="279.9" y1="518" x2="200" y2="582" stroke="#1a7f37" stroke-dasharray="3 3"/>
+<line x1="398.7" y1="518" x2="560" y2="582" stroke="#1a7f37" stroke-dasharray="3 3"/>
 <line x1="310.0" y1="522" x2="360" y2="580" stroke="#9a6700" stroke-dasharray="3 3"/>
 <line x1="314.0" y1="522" x2="520" y2="580" stroke="#9a6700" stroke-dasharray="3 3"/>
 <rect x="556" y="529" width="5" height="14" fill="#dafbe1" stroke="#1a7f37" rx="1"/>
@@ -102,11 +103,16 @@
 <line x1="186" y1="454" x2="590" y2="454" stroke="#d0d7de" stroke-width="1.5"/>
 <line x1="186" y1="472" x2="590" y2="472" stroke="#d0d7de" stroke-width="1.5"/>
 <line x1="186" y1="498" x2="590" y2="498" stroke="#d0d7de" stroke-width="1.5"/>
-<line x1="200" y1="498" x2="528" y2="498" stroke="#57606a" stroke-width="3"/>
-<line x1="200" y1="400" x2="520" y2="400" stroke="#0969da" stroke-width="2.5"/>
-<polygon points="520,396 528,400 520,404" fill="#0969da"/>
-<line x1="200" y1="454" x2="520" y2="454" stroke="#0969da" stroke-width="2.5"/>
-<polygon points="520,450 528,454 520,458" fill="#0969da"/>
+<line x1="360" y1="498" x2="520" y2="498" stroke="#57606a" stroke-width="3"/>
+<line x1="200" y1="400" x2="560" y2="400" stroke="#0969da" stroke-width="2.5"/>
+<line x1="200" y1="454" x2="560" y2="454" stroke="#0969da" stroke-width="2.5"/>
+<rect x="552" y="390" width="16" height="124" fill="#dafbe1" stroke="#1a7f37" rx="3"/>
+<circle cx="560" cy="400" r="3.5" fill="#1a7f37"/>
+<circle cx="560" cy="418" r="3.5" fill="#1a7f37"/>
+<circle cx="560" cy="436" r="3.5" fill="#1a7f37"/>
+<circle cx="560" cy="454" r="3.5" fill="#1a7f37"/>
+<circle cx="560" cy="472" r="3.5" fill="#1a7f37"/>
+<circle cx="560" cy="498" r="3.5" fill="#1a7f37"/>
 <rect x="192" y="390" width="16" height="124" fill="#dafbe1" stroke="#1a7f37" rx="3"/>
 <circle cx="200" cy="400" r="3.5" fill="#1a7f37"/>
 <circle cx="200" cy="418" r="3.5" fill="#1a7f37"/>
@@ -123,8 +129,9 @@
 <text x="600" y="404" fill="#0969da">chosen, so followed</text>
 <text x="600" y="422" fill="#8c959f">not chosen, so not read</text>
 <text x="200" y="528" fill="#1a7f37" text-anchor="middle">anchor node</text>
-<line x1="200" y1="546" x2="360" y2="546" stroke="#57606a" marker-start="url(#t)" marker-end="url(#t)"/>
-<text x="280" y="564" fill="#57606a" text-anchor="middle">The query walks the reference from the anchor to the window, a distance under 1.5 × --anchor-spacing.</text>
+<text x="560" y="528" fill="#1a7f37" text-anchor="middle">anchor node</text>
+<line x1="200" y1="546" x2="560" y2="546" stroke="#57606a" marker-start="url(#t)" marker-end="url(#t)"/>
+<text x="380" y="564" fill="#57606a" text-anchor="middle">The query follows each chosen haplotype between its visits to the two anchors, which lie 131,050 bp apart on the reference.</text>
 
 <rect x="20" y="576" width="720" height="38" fill="#ffffff" stroke="#d0d7de" rx="4"/>
 <line x1="32" y1="590" x2="56" y2="590" stroke="#57606a" stroke-width="1.5"/>
@@ -135,6 +142,6 @@
 <rect x="326" y="583" width="8" height="14" fill="#dafbe1" stroke="#1a7f37" rx="2"/>
 <text x="344" y="594" fill="#1a7f37" font-size="10">sample, and anchor node, read from graph.haplotype-index.db</text>
 <line x1="310" y1="606" x2="334" y2="606" stroke="#0969da" stroke-width="2.5"/>
-<text x="344" y="610" fill="#0969da" font-size="10">chosen walk, followed from the anchor through the window</text>
+<text x="344" y="610" fill="#0969da" font-size="10">chosen walk, followed from one anchor to the next</text>
 </g>
 </svg>

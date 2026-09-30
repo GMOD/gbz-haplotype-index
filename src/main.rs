@@ -666,6 +666,7 @@ fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], pat
             write_bin.execute(params![b.reference_handle as i64, b.bin as i64, b.part as i64, b.nodes]).unwrap();
         }
         let mut write_tag = transaction.prepare("INSERT INTO Tags(key, value) VALUES (?1, ?2)").unwrap();
+        write_tag.execute(params!["haplotype_index_tool_version", env!("CARGO_PKG_VERSION")]).unwrap();
         write_tag.execute(params!["haplotype_index_interval", args.interval.to_string()]).unwrap();
         write_tag.execute(params!["haplotype_index_reference_interval", args.reference_interval.to_string()]).unwrap();
         write_tag.execute(params!["haplotype_index_orientations", if args.forward_only { "forward" } else { "both" }]).unwrap();
