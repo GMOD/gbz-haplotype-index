@@ -15,6 +15,12 @@ gbz-haplotype-index --interval 16384 --from-db graph.gbz.db graph.haplotype-inde
 Give `graph.gbz.db` with the GBZ: the tool reads the top-level snarls from it,
 which a query that keeps a few haplotypes and fills snarls needs.
 
+The stray rows are complete only for the walks that @gmod/gbz-base's keep route
+takes, so `strays.rs` and `src/chosenPaths.ts` state the same rule. A change to
+that rule on either side must bump the `haplotype_index_stray_format` tag that
+`main.rs` writes and the reader tests for; a reader that meets a format it does
+not know identifies every walk instead of trusting the rows.
+
 [@gmod/gbz-base](https://github.com/GMOD/gbz-base-js) reads the index beside the
 database, locally or over HTTP. The
 [documentation](https://github.com/GMOD/gbz-base-js/blob/main/docs/haplotype-index.md)
