@@ -40,12 +40,14 @@ position, with its own coordinate, from the rows at one node.
 The index records the graph's path and node counts so the reader catches a
 mismatch at open.
 
-Strays: for each reference sample with anchors, table HaplotypeStrays lists
-the visits of other paths that the keep route's walks from anchor visits do
-not reach, as rows the reader walks for the paths it keeps. A node's loci are
-the reference positions within --stray-context bp of it in the graph and the
-reference visits beside it along each path, so the table holds for queries
-whose context is at most --stray-context. --stray-context 0 writes none.
+Strays: for each reference sample with anchors, table HaplotypeBinNodes lists
+the nodes within --stray-context bp of each --stray-bin bp of a reference
+path, and table HaplotypeStrays lists the visits to those nodes that the keep
+route's walks from anchor visits can miss, as rows the reader walks for the
+paths it keeps. A query checks its subgraph against the node lists, so the
+tables hold for a context of at most --stray-context. Give graph.gbz.db, which
+holds the top-level snarls, for the rows to cover a query that fills snarls.
+--stray-context 0 writes neither table.
 
 With --from-db the walk reads node records from the database itself, so the
 GBZ is not needed. Walking a GBZ uses --threads (default: all cores).
@@ -57,8 +59,11 @@ Options:
   --reference-interval BP
                        bp between samples along a reference path
                        (default: --interval)
-  --stray-context BP   the largest query context HaplotypeStrays covers
+  --stray-context BP   the largest query context the stray rows cover
                        (default 1000)
+  --stray-bin BP       bp of a reference path per node list (default 16384)
+  --stray-bound BP     bp a walk runs past an anchor visit (default 32768)
+  --stray-gap BP       bp between strays that starts a new row (default 1024)
   --forward-only       sample only the forward orientation of each path
   --overwrite          replace index.db if it exists
   --threads N          walker threads for the GBZ route
@@ -76,8 +81,17 @@ struct Args {
     anchor_sample: Option<String>,
     reference_interval: usize,
     stray_context: usize,
+    stray_bin: usize,
+    stray_bound: usize,
+    stray_gap: usize,
     forward_only: bool,
     threads: usize,
+}
+
+impl Args {
+    fn stray_options(&self) -> strays::Options {
+        strays::Options { context: self.stray_context, bin: self.stray_bin, bound: self.stray_bound, gap: self.stray_gap }
+    }
 }
 
 fn parse_args() -> Args {
@@ -87,6 +101,9 @@ fn parse_args() -> Args {
     let mut anchor_sample = None;
     let mut reference_interval = None;
     let mut stray_context = 1000;
+    let mut stray_bin = 16384;
+    let mut stray_bound = 32768;
+    let mut stray_gap = 1024;
     let mut forward_only = false;
     let mut from_db = false;
     let mut overwrite = false;
@@ -121,12 +138,18 @@ fn parse_args() -> Args {
                     process::exit(1);
                 }));
             }
-            "--stray-context" => {
+            "--stray-context" | "--stray-bin" | "--stray-bound" | "--stray-gap" => {
                 let value = iter.next().unwrap_or_default();
-                stray_context = value.parse().unwrap_or_else(|_| {
-                    eprintln!("Invalid --stray-context: {}", value);
+                let parsed = value.parse().unwrap_or_else(|_| {
+                    eprintln!("Invalid {}: {}", arg, value);
                     process::exit(1);
                 });
+                match arg.as_str() {
+                    "--stray-context" => stray_context = parsed,
+                    "--stray-bin" => stray_bin = parsed,
+                    "--stray-bound" => stray_bound = parsed,
+                    _ => stray_gap = parsed,
+                }
             }
             "--threads" => {
                 let value = iter.next().unwrap_or_default();
@@ -147,7 +170,7 @@ fn parse_args() -> Args {
     }
     let valid = if from_db { positional.len() == 2 } else { positional.len() == 2 || positional.len() == 3 };
     let reference_interval = reference_interval.unwrap_or(interval);
-    if !valid || interval == 0 || reference_interval == 0 || threads == 0 {
+    if !valid || interval == 0 || reference_interval == 0 || threads == 0 || stray_bin == 0 {
         eprint!("{}", USAGE);
         process::exit(1);
     }
@@ -158,7 +181,7 @@ fn parse_args() -> Args {
         let gbz = positional.remove(0);
         (Some(gbz), positional.pop())
     };
-    Args { gbz, db, output, overwrite, interval, anchor_spacing, anchor_sample, reference_interval, stray_context, forward_only, threads }
+    Args { gbz, db, output, overwrite, interval, anchor_spacing, anchor_sample, reference_interval, stray_context, stray_bin, stray_bound, stray_gap, forward_only, threads }
 }
 
 #[derive(Clone, Copy)]
@@ -570,22 +593,25 @@ CREATE TABLE HaplotypeAnchors (
 ) STRICT;
 CREATE TABLE HaplotypeStrays (
     reference_handle INTEGER NOT NULL,
-    reference_start INTEGER NOT NULL,
-    reference_end INTEGER NOT NULL,
+    bin INTEGER NOT NULL,
     path_handle INTEGER NOT NULL,
     path_start INTEGER NOT NULL,
+    snarl_low INTEGER NOT NULL,
+    snarl_high INTEGER NOT NULL,
     path_end INTEGER NOT NULL,
     node_handle INTEGER NOT NULL,
     node_offset INTEGER NOT NULL,
-    PRIMARY KEY (reference_handle, reference_start, reference_end, path_handle, path_start, path_end, node_handle, node_offset)
+    PRIMARY KEY (reference_handle, bin, path_handle, path_start, snarl_low, snarl_high)
+) STRICT, WITHOUT ROWID;
+CREATE TABLE HaplotypeBinNodes (
+    reference_handle INTEGER NOT NULL,
+    bin INTEGER NOT NULL,
+    part INTEGER NOT NULL,
+    nodes BLOB NOT NULL,
+    PRIMARY KEY (reference_handle, bin, part)
 ) STRICT, WITHOUT ROWID;";
 
-struct Strays {
-    rows: Vec<strays::Stray>,
-    samples: Vec<String>,
-}
-
-fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], paths: usize, nodes: usize, anchors: &Anchors, strays: &Strays, args: &Args) {
+fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], paths: usize, nodes: usize, anchors: &Anchors, strays: &strays::Output, args: &Args) {
     let started = Instant::now();
     samples.sort_unstable_by_key(|s| (s.node_handle, s.node_offset));
     eprintln!("Sorted {} samples in {:.0} s", samples.len(), started.elapsed().as_secs_f64());
@@ -618,21 +644,26 @@ fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], pat
             write_anchor.execute(params![a.path_handle as i64, a.anchor_offset as i64, a.node_handle as i64, a.path_offset as i64]).unwrap();
         }
         let mut write_stray = transaction
-            .prepare("INSERT INTO HaplotypeStrays(reference_handle, reference_start, reference_end, path_handle, path_start, path_end, node_handle, node_offset) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)")
+            .prepare("INSERT INTO HaplotypeStrays(reference_handle, bin, path_handle, path_start, snarl_low, snarl_high, path_end, node_handle, node_offset) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)")
             .unwrap();
         for r in strays.rows.iter() {
             write_stray
                 .execute(params![
                     r.reference_handle as i64,
-                    r.reference_start as i64,
-                    r.reference_end as i64,
+                    r.bin as i64,
                     r.path_handle as i64,
                     r.path_start as i64,
+                    r.snarl_low as i64,
+                    r.snarl_high as i64,
                     r.path_end as i64,
                     r.node_handle as i64,
                     r.node_offset as i64
                 ])
                 .unwrap();
+        }
+        let mut write_bin = transaction.prepare("INSERT INTO HaplotypeBinNodes(reference_handle, bin, part, nodes) VALUES (?1, ?2, ?3, ?4)").unwrap();
+        for b in strays.bins.iter() {
+            write_bin.execute(params![b.reference_handle as i64, b.bin as i64, b.part as i64, b.nodes]).unwrap();
         }
         let mut write_tag = transaction.prepare("INSERT INTO Tags(key, value) VALUES (?1, ?2)").unwrap();
         write_tag.execute(params!["haplotype_index_interval", args.interval.to_string()]).unwrap();
@@ -654,12 +685,17 @@ fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], pat
         }
         if !strays.samples.is_empty() {
             let stray_tags = [
+                ("haplotype_index_stray_format", "2".to_string()),
                 ("haplotype_index_stray_context", args.stray_context.to_string()),
-                ("haplotype_index_stray_bound", strays::BOUND.to_string()),
-                ("haplotype_index_stray_chunk", strays::CHUNK.to_string()),
-                ("haplotype_index_stray_tolerance", strays::TOLERANCE.to_string()),
+                ("haplotype_index_stray_bin", args.stray_bin.to_string()),
+                ("haplotype_index_stray_bound", args.stray_bound.to_string()),
+                ("haplotype_index_stray_gap", args.stray_gap.to_string()),
                 ("haplotype_index_stray_samples", strays.samples.join(",")),
                 ("haplotype_index_stray_rows", strays.rows.len().to_string()),
+                ("haplotype_index_stray_bin_parts", strays.bins.len().to_string()),
+                ("haplotype_index_stray_snarls", if strays.snarls_modeled { "modeled" } else { "none" }.to_string()),
+                ("haplotype_index_stray_snarl_nodes", strays::SNARL_NODES.to_string()),
+                ("haplotype_index_stray_chain_links", strays.chain_links.to_string()),
                 ("haplotype_index_stray_rule", strays::RULE.to_string()),
             ];
             for (key, value) in stray_tags.iter() {
@@ -669,10 +705,12 @@ fn write(target: &str, mut samples: Vec<Sample>, lengths: &[(usize, usize)], pat
     }
     transaction.commit().unwrap();
     eprintln!(
-        "Wrote {} samples, {} anchors and {} stray rows for {} paths to {} in {:.0} s",
+        "Wrote {} samples, {} anchors, {} stray rows and {} bin parts ({} bytes) for {} paths to {} in {:.0} s",
         samples.len(),
         anchors.rows.len(),
         strays.rows.len(),
+        strays.bins.len(),
+        strays.bins.iter().map(|b| b.nodes.len()).sum::<usize>(),
         paths,
         target,
         started.elapsed().as_secs_f64()
@@ -693,7 +731,15 @@ fn max_node_id_from_db(db: &str) -> usize {
     support::node_id(handle as usize)
 }
 
-fn walk_db(db: &str, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>, Anchors, Strays) {
+// The links between the boundary nodes of top-level snarls, as (handle, next).
+fn chain_links(db: &str) -> Vec<(usize, usize)> {
+    let connection = Connection::open(db).unwrap();
+    let mut statement = connection.prepare("SELECT handle, next FROM Nodes WHERE next IS NOT NULL").unwrap();
+    let links = statement.query_map([], |row| Ok((row.get::<_, i64>(0)? as usize, row.get::<_, i64>(1)? as usize))).unwrap();
+    links.map(|link| link.unwrap()).collect()
+}
+
+fn walk_db(db: &str, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>, Anchors, strays::Output) {
     let paths = count_from_db(db, "paths");
     let max_node_id = max_node_id_from_db(db);
     let database = GBZBase::open(db).unwrap_or_else(|e| {
@@ -708,8 +754,13 @@ fn walk_db(db: &str, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>, Anchors,
     eprintln!("Chose {} anchors on {} distinct nodes over {} reference paths at {} bp spacing", rows.len(), nodes.len(), reference_paths.len(), args.anchor_spacing);
     let anchors = Anchors { nodes, rows, reference_paths: reference_paths.into_iter().collect() };
     let (samples, lengths) = walk_paths(&source, 0..paths, args, &anchors, "database walk");
-    let (rows, samples_with_strays) = strays::strays(&strays::Serial(&source), &anchors, args.anchor_spacing, args.stray_context);
-    (samples, lengths, anchors, Strays { rows, samples: samples_with_strays })
+    let strays = if args.stray_context > 0 && args.anchor_spacing > 0 {
+        let snarls = strays::Snarls::find(&source, &chain_links(db), count_from_db(db, "chain_links"));
+        strays::strays(&strays::Serial(&source), &anchors, args.anchor_spacing, args.stray_options(), &snarls)
+    } else {
+        strays::Output::empty()
+    };
+    (samples, lengths, anchors, strays)
 }
 
 fn main() {
@@ -753,9 +804,19 @@ fn main() {
             let anchors = anchors_gbz(&graph, &args);
             let (samples, lengths) = walk_gbz(&graph, paths, &args, &anchors);
             let source = GbzSource { graph: &graph };
-            let (rows, samples_with_strays) =
-                strays::strays(&strays::Threads { source: &source, threads: args.threads }, &anchors, args.anchor_spacing, args.stray_context);
-            (samples, lengths, paths, nodes, anchors, Strays { rows, samples: samples_with_strays })
+            let strays = if args.stray_context > 0 && args.anchor_spacing > 0 {
+                let snarls = match &args.db {
+                    Some(db) => strays::Snarls::find(&source, &chain_links(db), count_from_db(db, "chain_links")),
+                    None => {
+                        eprintln!("No graph.gbz.db given: the stray rows leave snarls out, and a query that fills one identifies every walk");
+                        strays::Snarls::none()
+                    }
+                };
+                strays::strays(&strays::Threads { source: &source, threads: args.threads }, &anchors, args.anchor_spacing, args.stray_options(), &snarls)
+            } else {
+                strays::Output::empty()
+            };
+            (samples, lengths, paths, nodes, anchors, strays)
         }
         None => {
             let db = args.db.as_ref().unwrap();
@@ -787,6 +848,9 @@ mod tests {
             anchor_sample: None,
             reference_interval: interval,
             stray_context: 1000,
+            stray_bin: 16384,
+            stray_bound: 32768,
+            stray_gap: 1024,
             forward_only: false,
             threads: 1,
         }
