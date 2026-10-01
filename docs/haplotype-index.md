@@ -3,9 +3,11 @@
 Upstream gbz-base prints each walk other than the query path as `unknown#N`.
 [@gmod/gbz-base](https://github.com/GMOD/gbz-base-js) reports the sample,
 haplotype and contig of every walk, looked up in a haplotype index: a sidecar
-SQLite file that the Rust program `gbz-haplotype-index` writes beside the graph
-database. The graph database stays as `gbz-base construct` wrote it, so a
-haplotype index also works with a database someone else hosts.
+SQLite file that this repository's program,
+[`gbz-haplotype-index`](https://crates.io/crates/gbz-haplotype-index)
+(`cargo install gbz-haplotype-index`), writes beside the graph database. The
+graph database stays as `gbz-base construct` wrote it, so a haplotype index also
+works with a database someone else hosts.
 
 Building the haplotype index happens once per graph and covers every haplotype.
 Identifying walks happens on every query that reads the index. A caller who
