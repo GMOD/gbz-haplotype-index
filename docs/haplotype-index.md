@@ -296,6 +296,16 @@ bins, and fixed it with a fixture (`test/data/anchor-at-bound.gfa`). The trigger
 needs a node longer than half the anchor spacing, 65,536 bp in this index, and
 the longest node in HPRC v2.1 is 1,024 bp.
 
+The fuzzer now builds each database with top-level chains from a vg distance
+index, so its queries fill snarls; before that, most generated graphs had no
+chains. Over 2,050 more graphs, 500 small and medium and 1,550 of 150-400 kb
+with 16-40 haplotypes, 363,623 queries that use the `keep` option returned the
+pieces from the GFA, 60,468 of them after filling a snarl, and the two routes
+never differed.
+
+After the last change to either route, at `aafb2bc`, we ran the comparisons in
+the table and `gbz-truth` again, and every count came out the same.
+
 With both files on local disk and their pages in memory, the median query took
 102 ms on the keep route and 169 ms on the sampled route over the random
 windows, 117 ms and 289 ms in segmental duplications, and 144 ms and 1,404 ms at
