@@ -19,7 +19,10 @@ The stray rows are complete only for the walks that @gmod/gbz-base's keep route
 takes, so `strays.rs` and `src/chosenPaths.ts` state the same rule. A change to
 that rule on either side must bump the `haplotype_index_stray_format` tag that
 `main.rs` writes and the reader tests for; a reader that meets a format it does
-not know identifies every walk instead of trusting the rows.
+not know identifies every walk instead of trusting the rows. The
+[proof](https://github.com/GMOD/gbz-base-js/blob/main/docs/haplotype-index.md#proof-that-the-keep-route-finds-every-piece)
+that the keep route finds every piece names the comparisons on both sides that
+the rule depends on.
 
 [@gmod/gbz-base](https://github.com/GMOD/gbz-base-js) reads the index beside the
 database, locally or over HTTP. The
