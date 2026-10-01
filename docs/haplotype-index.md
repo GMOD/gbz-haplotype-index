@@ -269,41 +269,54 @@ added to it. P is a chosen path, and a visit is one step of P's forward walk,
 placed at the offset along P where its node starts. `a(k)` is the offset along R
 of the anchor of multiple k.
 
-**Assumptions.** Each holds by construction in the indexer or the reader, and no
-query checks it:
+**Assumptions.** Each holds by construction in the indexer or the reader. The
+library checks parts of assumptions 3 and 4 and none of the others:
 
-1. R has an anchor at every multiple from 0 to the last one its length reaches,
-   and `a(k) ≤ a(k + 1)`, with equality only when one node anchors both
-   multiples (`mark_anchors` in `main.rs`).
+1. The multiples with an anchor on R run from 0 without a gap, and
+   `a(k) ≤ a(k + 1)`, with equality only when one node anchors both multiples
+   (`mark_anchors` in `main.rs`). Every node is at least 1 bp long.
 2. The index has a sample at every visit of every path to an anchor node (`walk`
-   in `main.rs`), so the anchor rows list every such visit.
+   in `main.rs`), so the anchor rows list every such visit. Each forward sample,
+   anchor and stray row records a visit's GBWT position and the offset along the
+   path where its node starts, the quantity a walk's `left` tracks.
 3. The indexer (`Snarls::find`) and the query (`fillBetween`) fill a snarl with
    the same search from the same chain link: from both boundary nodes inward,
    along edges on both sides of each node, never entering the two boundary
-   nodes. So every neighbour of a node in the filled region is in the region or
-   is a boundary node. The query uses snarl rows only when the index's tags say
-   `modeled` and record the same number of chain links as the database.
+   nodes. In a GBZ the graph's edges are the GBWT's, so both searches follow the
+   same edges, and one of those edges joins any two consecutive visits of a
+   path. So the next visit after a visit to the filled region lies in the region
+   or at a boundary node. The query uses snarl rows only when the index's tags
+   say `modeled` and record the same number of chain links as the database, a
+   count that does not compare the links themselves.
+4. The index was built from this graph. When it opens the index, the library
+   compares the path and node counts, which would miss a different graph with
+   the same counts.
 
-**Part 1: what a walk passes.** A walk passes a visit when the visit lies in a
-piece the query recorded. `walkForward` steps on while a node starts at or
-before `until`, and `walkBackward` steps back while the current node starts
-after `until`, so both comparisons are inclusive. On a node of S each records
-the maximal piece through that position and jumps to the piece's far end, and
-the visits it jumps over lie in that piece. So for P's anchor visits at offsets
-`u ≤ v`:
+**Part 1: what a walk covers.** A walk covers a range of offsets along P when
+every visit to S in that range lies in a piece the query recorded. A walk starts
+at a GBWT position with that visit's offset (assumption 2) and adds each node's
+length as it steps, so `left` stays the offset of the current visit.
+`walkForward` steps on while a node starts at or before `until`, and
+`walkBackward` steps back while the current node starts after `until`, so both
+comparisons are inclusive. On a node of S each records the maximal piece through
+that position and jumps to the piece's far end, and the visits it jumps over lie
+in that piece. So each walk steps through a contiguous stretch of P, and for P's
+anchor visits at offsets `u ≤ v`:
 
-- a section walk passes every visit at offsets in `[u − bound, v + bound]`;
-- a walk around the anchor visit at u passes `[u − bound, u + bound]`;
-- the walk of a stray row passes `[path_start, path_end]` of the row.
+- a section walk covers `[u − bound, v + bound]`;
+- a walk around the anchor visit at u covers `[u − bound, u + bound]`;
+- the walk of a stray row covers `[path_start, path_end]` of the row.
 
-The query skips a plan or a row only when `covered` finds its range inside a
-range that an earlier walk of P passed, so skipping loses nothing.
+A walk that meets an end of P stops early, and the range beyond holds no visits.
+`markWalked` records the planned range widened to what the walk reached, so
+every recorded range is covered, and the query skips a plan or a row only when
+`covered` finds its range inside a recorded range of P.
 
 **Part 2: the indexer's rule.** The indexer cuts P at its visits to the anchor
 nodes of R's sample. A section is the stretch between two consecutive cuts that
 are anchors of adjacent multiples k and k + 1 of R, where neither node anchors
-another multiple. For a bin b of R, the indexer counts a visit of the section as
-reached when one of these holds:
+another multiple of any reference path of R's sample. For a bin b of R, the
+indexer counts a visit of the section as reached when one of these holds:
 
 - (i) `a(k) < b_hi` and `a(k + 1) ≥ b_lo`;
 - (ii) `a(k) ≥ b_hi`, `a(k) − b_hi ≤ bound`, and the visit lies within `bound`
@@ -311,15 +324,19 @@ reached when one of these holds:
 - (iii) `a(k + 1) < b_lo`, `b_lo − a(k + 1) ≤ bound`, and the visit lies within
   `bound` along P of the visit to the anchor at `a(k + 1)`.
 
-The indexer writes every visit to a node of b that none of these reaches into a
-stray row of b, and a row runs from its first stray to its last.
+The indexer tests a visit only against the sections it lies in, two when the
+visit is itself a cut. A visit within `bound` of an anchor visit in the
+neighbouring section therefore becomes a stray, which adds a row. The indexer
+writes every visit to a node of b that none of these reaches into a stray row of
+b, and a row runs from its first stray to its last.
 
 ![For a window of one bin b: in case (i) the anchors' span meets b and the query walks the section and bound past both visits; in case (ii) a(k) lies up to bound past b and the query walks bound to each side of its visit; case (iii) mirrors it before b; every other visit to a node of b is in a stray row. Below, the query reads every anchor from the last before lo − bound to the first past hi + bound, so an anchor at exactly hi + bound brings in the one after it](img/proof-reach.svg)
 
 **Part 3: the query reads both anchors of every such section.** Each case of
 part 2 gives `a(k) ≤ hi + bound` and `a(k + 1) ≥ lo − bound`. The query reads
 every multiple from `lowest` to `highest`, moving `lowest` down while
-`a(lowest) ≥ lo − bound` and `highest` up while `a(highest) ≤ hi + bound`.
+`a(lowest) ≥ lo − bound` or `lowest` has no anchor, and `highest` up while
+`a(highest) ≤ hi + bound`.
 
 - If `k < lowest`, then `k + 1 ≤ lowest`, so
   `a(k + 1) ≤ a(lowest) < lo − bound`, a contradiction, or `lowest` is 0 and k
@@ -334,18 +351,22 @@ the loop before the multiple past it, which is the omission that `4c7f8f8`
 fixed.
 
 The query's cuts of P are its visits to the anchors it read on R, a subset of
-the indexer's cuts. Two cuts that are consecutive for the indexer are therefore
-consecutive for the query, and a node that anchors one multiple for the indexer
-anchors one among those the query read. So the query sees every section of part
-2 as a consecutive pair of anchor visits with adjacent multiples.
+the indexer's cuts: R is one of the reference paths of its sample, so its anchor
+nodes are cuts for the indexer, and the query reads the samples at both
+orientations of each anchor node once and keeps the forward ones, which by
+assumption 2 are all of P's visits there. Two cuts that are consecutive for the
+indexer are therefore consecutive for the query, and a node that anchors one
+multiple for the indexer anchors one among those the query read. So the query
+sees every section of part 2 as a consecutive pair of anchor visits with
+adjacent multiples.
 
 **Part 4: every reached visit lies on a planned walk.** Take a section of part 2
 with anchor visits at u ≤ v along P.
 
 - Case (i): `a(k) < b_hi ≤ hi` and `a(k + 1) ≥ b_lo ≥ lo`, so the query plans
-  the section walk, which passes every visit of the section by part 1.
+  the section walk, which covers the section by part 1.
 - Case (ii): if `a(k) < hi`, then `a(k + 1) ≥ a(k) ≥ b_hi > lo` and the query
-  plans the section walk, which passes `[u − bound, v + bound]` and with it
+  plans the section walk, which covers `[u − bound, v + bound]` and with it
   every visit within `bound` of either anchor visit. Otherwise `a(k) ≥ hi` and
   `a(k) − hi ≤ a(k) − b_hi ≤ bound`, so the query plans a walk around the visit
   to the anchor at `a(k)`.
@@ -357,7 +378,7 @@ a node x of S.
 
 - When x is not in I, the check of step 2 of the query found x in the node list
   of some bin b from F to L of R. The indexer tested p against b. If one of the
-  cases of part 2 reached p, part 4 gives a planned walk that passes it.
+  cases of part 2 reached p, part 4 gives a planned walk that covers it.
   Otherwise p lies in a stray row of b for P, and the query reads the rows of
   bins F to L, keeps those of chosen paths and walks each.
 - When x is in I, x lies in the region of a filled snarl with boundary nodes y
@@ -376,8 +397,8 @@ a node x of S.
 The source of the snarl figure is [proof-snarl.dot](img/proof-snarl.dot); the
 figure of the walks is hand-written SVG.
 
-Every piece of P in S therefore holds a visit that some walk passes, and a walk
-that passes a visit records the maximal piece through it.
+Every visit of P to S therefore lies in a recorded piece, and each recorded
+piece is a maximal run of P in S, so the query has recorded every piece of P.
 
 **What the proof leaves to the checks.** The walks find each piece in P's
 forward orientation, and step 7 of the query finds the other orientation where
