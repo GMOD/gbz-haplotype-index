@@ -7,12 +7,10 @@ SQLite file that the Rust program `gbz-haplotype-index` writes beside the graph
 database. The graph database stays as `gbz-base construct` wrote it, so a
 haplotype index also works with a database someone else hosts.
 
-Two things happen at different times. Building the haplotype index happens once
-per graph, and the file covers every haplotype in the graph. Identifying walks
-happens on every query that reads the index. A caller who wants a subset of the
-haplotypes passes the `keep` option with the query
-([below](#querying-a-subset-of-the-haplotypes)); the index needs no rebuild for
-a different choice.
+Building the haplotype index happens once per graph and covers every haplotype.
+Identifying walks happens on every query that reads the index. A caller who
+wants a subset of the haplotypes passes the `keep` option with the query
+([below](#querying-a-subset-of-the-haplotypes)), with no rebuild.
 
 ## Samples and anchors
 
@@ -21,13 +19,11 @@ stores each path as a sequence of oriented nodes, once in each orientation. A
 position is a node record plus the rank of one visit among all visits to that
 node, so each position belongs to exactly one path in one orientation, and each
 node record maps every position to the next one along its path. A GBWT file also
-carries document array samples for `locate()`, which map a position back to its
-path. gbwt-rs passes them through unread, and a GBZ-base holds, per node record,
-the edges, the BWT fragment, the sequence and the chain link, and per path its
-two start positions, so the database names a path at those two positions in
-`Paths`, which can be a whole chromosome away from a query window. The haplotype
-index is that sampling, kept beside the database. It records the path at
-positions along the way:
+carries document array samples that map a position back to its path, but gbwt-rs
+does not read them, so the database names a path only at its two start positions
+in `Paths`, which can be a whole chromosome away from a query window. The
+haplotype index is that sampling, kept beside the database. It records the path
+at positions along the way:
 
 - A **sample** records a position, the path through it, the orientation and the
   coordinate along that path. `gbz-haplotype-index` writes one every
@@ -56,14 +52,11 @@ positions along the way:
 
 ![graph.gbz.db lists the visits at each node by rank and names each path at its start position. The haplotype index adds a sample every --interval bp that maps a position to a path, so a query names a walk from the next sample along it](img/haplotype-samples.svg)
 
-A query that uses the `keep` option reads the anchor rows around the window, and
-the node lists and stray rows of the bins the window touches.
 `gbz-haplotype-index` starts the interval count of each path again at every
 anchor visit, so the samples of all haplotypes fall near the same reference
-positions, and a window shorter than `--interval` often contains none. The
-anchor rows give the position and coordinate of each chosen haplotype at each
-anchor, and the query walks each chosen haplotype from one anchor to the next,
-then along its stray rows ([below](#keep)).
+positions, and a window shorter than `--interval` often contains none. A query
+that uses the `keep` option therefore reads the anchor rows, node lists and
+stray rows around the window instead ([below](#keep)).
 
 Table `HaplotypeSamples` contains the samples, `HaplotypeAnchors` lists the
 anchor nodes, `HaplotypeBinNodes` lists the nodes of each bin, `HaplotypeStrays`
@@ -177,9 +170,6 @@ subgraph, then drops the haplotypes the predicate rejects.
 
 ![A query that uses the keep option takes the keep route; when a check of the keep route fails, and for every other query, the library identifies every walk](img/naming-routes.svg)
 
-The flowchart source is [naming-routes.dot](img/naming-routes.dot); the
-schematic is hand-written SVG.
-
 ### Sampled
 
 1. The query extracts every walk through the nodes in the window.
@@ -258,8 +248,7 @@ on both sides,
 [`src/chosenPaths.ts`](https://github.com/GMOD/gbz-base-js/blob/main/src/chosenPaths.ts)
 in gbz-base-js and [`src/strays.rs`](../src/strays.rs), so a change to either
 can be checked against it. The fuzzer tests the same claim, and the proof names
-the comparisons it rests on. The one omission found so far, the fixture
-`anchor-at-bound`, was a comparison that broke part 3 of the proof.
+the comparisons it rests on.
 
 **Notation.** R is the query's reference path, `spacing` the anchor spacing,
 `bin` the bin length and `bound` the walks' reach (`--stray-bound`). The window
@@ -399,9 +388,6 @@ a node x of S.
 
 ![A filled snarl between boundary nodes y and z, both in the subgraph before any fill. A path that enters the region leaves it only through y or z, so its piece through the region holds a visit to y or z. A path inside the region from end to end has a row naming the snarl](img/proof-snarl.svg)
 
-The source of the snarl figure is [proof-snarl.dot](img/proof-snarl.dot); the
-figure of the walks is hand-written SVG.
-
 Every visit of P to S therefore lies in a recorded piece, and each recorded
 piece is a maximal run of P in S, so the query has recorded every piece of P.
 
@@ -440,9 +426,7 @@ the 30 windows of 150-500 kb, which ran the first two settings only. Each kept
 one haplotype, one sample, and eight haplotypes. The last row kept every
 haplotype, with the limit of 32 chosen paths lifted, so it compares every walk
 in each window. The 24 queries that identified every walk had more than 32
-chosen paths at the anchors (18) or a walk past its cap (6). The route of 4.1.0,
-which placed each haplotype from its anchor visits and the samples in the
-window, differed in 152 of the first row's queries and dropped 585 pieces.
+chosen paths at the anchors (18) or a walk past its cap (6).
 
 `gbz-truth` lists the pieces that every path leaves in a subgraph, from the GBZ
 alone. The sampled route returned those pieces, with the same path and
@@ -466,11 +450,9 @@ The trigger needs a node longer than half the anchor spacing, 65,536 bp in this
 index, and the longest node in HPRC v2.1 is 1,024 bp.
 
 The fuzzer now builds each database with top-level chains from a vg distance
-index, so its queries fill snarls; before that, most generated graphs had no
-chains. Over 2,050 more graphs, 500 small and medium and 1,550 of 150-400 kb
-with 16-40 haplotypes, 363,623 queries that use the `keep` option returned the
-pieces from the GFA, 60,468 of them after filling a snarl, and the two routes
-never differed.
+index, so its queries fill snarls. Over 2,050 more graphs, 363,623 queries that
+use the `keep` option returned the pieces from the GFA, 60,468 of them after
+filling a snarl, and the two routes never differed.
 
 After the last change to either route, at `aafb2bc`, we ran the comparisons in
 the table and `gbz-truth` again, and every count came out the same.
