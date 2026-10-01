@@ -348,7 +348,11 @@ every multiple from `lowest` to `highest`, moving `lowest` down while
 So the query reads both anchors. The proof needs `≥` in the first loop and `≤`
 in the second. With `<` in the second, an anchor at exactly `hi + bound` stopped
 the loop before the multiple past it, which is the omission that `4c7f8f8`
-fixed.
+fixed. The first loop never moves: `mark_anchors` chooses for multiple k a node
+that starts before `k × spacing`, so `a(k) < k × spacing`, and the first read
+already starts one multiple below `(lo − bound) / spacing`. The second loop
+moves when an anchor's node starts far before its multiple. Mutating the first
+loop's comparison therefore changes nothing, and no test can catch it.
 
 The query's cuts of P are its visits to the anchors it read on R, a subset of
 the indexer's cuts: R is one of the reference paths of its sample, so its anchor
