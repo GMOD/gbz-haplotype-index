@@ -85,7 +85,13 @@ pub struct Output {
 
 impl Output {
     pub fn empty() -> Self {
-        Output { rows: Vec::new(), bins: Vec::new(), samples: Vec::new(), snarls_modeled: false, chain_links: 0 }
+        Output {
+            rows: Vec::new(),
+            bins: Vec::new(),
+            samples: Vec::new(),
+            snarls_modeled: false,
+            chain_links: 0,
+        }
     }
 }
 
@@ -108,7 +114,9 @@ struct Loci {
 impl Loci {
     fn new(max_node_id: usize) -> Self {
         Loci {
-            slots: (0..=max_node_id).map(|_| [AtomicU64::new(EMPTY), AtomicU64::new(EMPTY)]).collect(),
+            slots: (0..=max_node_id)
+                .map(|_| [AtomicU64::new(EMPTY), AtomicU64::new(EMPTY)])
+                .collect(),
             spilled: (0..=max_node_id / 64).map(|_| AtomicU64::new(0)).collect(),
             full: (0..1024).map(|_| Mutex::new(HashMap::new())).collect(),
         }
@@ -124,7 +132,10 @@ impl Loci {
             loop {
                 let current = slot.load(Ordering::Relaxed);
                 if current == EMPTY {
-                    if slot.compare_exchange(EMPTY, locus, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+                    if slot
+                        .compare_exchange(EMPTY, locus, Ordering::Relaxed, Ordering::Relaxed)
+                        .is_ok()
+                    {
                         return;
                     }
                     continue;
@@ -146,9 +157,18 @@ impl Loci {
 
     fn of(&self, id: usize) -> Vec<u64> {
         if self.is_spilled(id) {
-            return self.full[id % self.full.len()].lock().unwrap().get(&id).cloned().unwrap_or_default();
+            return self.full[id % self.full.len()]
+                .lock()
+                .unwrap()
+                .get(&id)
+                .cloned()
+                .unwrap_or_default();
         }
-        self.slots[id].iter().map(|s| s.load(Ordering::Relaxed)).filter(|&l| l != EMPTY).collect()
+        self.slots[id]
+            .iter()
+            .map(|s| s.load(Ordering::Relaxed))
+            .filter(|&l| l != EMPTY)
+            .collect()
     }
 }
 
@@ -167,7 +187,11 @@ fn forward_visits(source: &dyn PathSource, path_handle: usize) -> Vec<Visit> {
             break;
         }
         let (len, next) = source.step(current);
-        visits.push(Visit { pos: current, offset, len: len as i64 });
+        visits.push(Visit {
+            pos: current,
+            offset,
+            len: len as i64,
+        });
         offset += len as i64;
         pos = next;
     }
@@ -227,7 +251,12 @@ pub struct Snarls {
 
 impl Snarls {
     pub fn none() -> Self {
-        Snarls { region_of: Vec::new(), bounds: Vec::new(), modeled: false, links: 0 }
+        Snarls {
+            region_of: Vec::new(),
+            bounds: Vec::new(),
+            modeled: false,
+            links: 0,
+        }
     }
 
     // `links` holds each link from both of its ends; `count` is the graph's
@@ -240,7 +269,10 @@ impl Snarls {
         let mut modeled = true;
         let mut oversized = 0;
         for &(handle, next) in links {
-            let key = std::cmp::min((handle, next), (support::flip_node(next), support::flip_node(handle)));
+            let key = std::cmp::min(
+                (handle, next),
+                (support::flip_node(next), support::flip_node(handle)),
+            );
             let (a, b) = (support::node_id(handle), support::node_id(next));
             if a == b || !seen.insert(key) {
                 continue;
@@ -278,8 +310,19 @@ impl Snarls {
         if !modeled {
             eprintln!("Warning: two top-level snarls share a node, so the stray rows leave snarls out and a query that fills one identifies every walk");
         }
-        eprintln!("Filled {} top-level snarls ({} above {} nodes left out) in {:.0} s", bounds.len(), oversized, SNARL_NODES, started.elapsed().as_secs_f64());
-        Snarls { region_of, bounds, modeled, links: count }
+        eprintln!(
+            "Filled {} top-level snarls ({} above {} nodes left out) in {:.0} s",
+            bounds.len(),
+            oversized,
+            SNARL_NODES,
+            started.elapsed().as_secs_f64()
+        );
+        Snarls {
+            region_of,
+            bounds,
+            modeled,
+            links: count,
+        }
     }
 
     // Paths whose nodes all lie in one region: (path, region, start, offset of the last visit).
@@ -289,7 +332,9 @@ impl Snarls {
             return found;
         }
         for path_handle in 0..source.path_count() {
-            let Some(start) = source.start(path_handle, Orientation::Forward) else { continue };
+            let Some(start) = source.start(path_handle, Orientation::Forward) else {
+                continue;
+            };
             if start.node == ENDMARKER {
                 continue;
             }
@@ -357,11 +402,15 @@ impl Sample {
                 let first = visit.offset as usize / self.options.bin;
                 let last = (visit.offset + visit.len.max(1) - 1) as usize / self.options.bin;
                 for bin in first..=last {
-                    bins.entry((handle, bin)).or_default().push(support::node_id(visit.pos.node));
+                    bins.entry((handle, bin))
+                        .or_default()
+                        .push(support::node_id(visit.pos.node));
                 }
             }
         }
-        bins.into_iter().map(|((handle, bin), ids)| (handle, bin, ids)).collect()
+        bins.into_iter()
+            .map(|((handle, bin), ids)| (handle, bin, ids))
+            .collect()
     }
 
     // Dijkstra over node sides from every source node, with the context
@@ -385,7 +434,14 @@ impl Sample {
                 heap.push(Reverse((distance + len - 1, id, !right)));
             }
             if distance + 1 <= context {
-                let exit = support::encode_node(id, if right { Orientation::Forward } else { Orientation::Reverse });
+                let exit = support::encode_node(
+                    id,
+                    if right {
+                        Orientation::Forward
+                    } else {
+                        Orientation::Reverse
+                    },
+                );
                 for successor in source.successors(exit) {
                     let entry_right = support::node_orientation(successor) == Orientation::Reverse;
                     let successor_id = support::node_id(successor);
@@ -400,12 +456,26 @@ impl Sample {
 
     fn section(&self, visits: &[Visit], from: (usize, Cut), to: (usize, Cut)) -> Option<Section> {
         match (from.1, to.1) {
-            (Cut::One(path_a, k_a, at_a), Cut::One(path_b, k_b, at_b)) if path_a == path_b && (k_a - k_b).abs() == 1 => {
+            (Cut::One(path_a, k_a, at_a), Cut::One(path_b, k_b, at_b))
+                if path_a == path_b && (k_a - k_b).abs() == 1 =>
+            {
                 let (visit_a, visit_b) = (visits[from.0].offset, visits[to.0].offset);
                 Some(if at_a <= at_b {
-                    Section { reference: path_a, low: at_a, low_visit: visit_a, high: at_b, high_visit: visit_b }
+                    Section {
+                        reference: path_a,
+                        low: at_a,
+                        low_visit: visit_a,
+                        high: at_b,
+                        high_visit: visit_b,
+                    }
                 } else {
-                    Section { reference: path_a, low: at_b, low_visit: visit_b, high: at_a, high_visit: visit_a }
+                    Section {
+                        reference: path_a,
+                        low: at_b,
+                        low_visit: visit_b,
+                        high: at_a,
+                        high_visit: visit_a,
+                    }
                 })
             }
             _ => None,
@@ -418,15 +488,29 @@ impl Sample {
         let end = start + self.options.bin as i64;
         section.reference == reference
             && ((section.low < end && section.high >= start)
-                || (section.low >= end && section.low - end <= bound && (offset - section.low_visit).abs() <= bound)
-                || (section.high < start && start - section.high <= bound && (offset - section.high_visit).abs() <= bound))
+                || (section.low >= end
+                    && section.low - end <= bound
+                    && (offset - section.low_visit).abs() <= bound)
+                || (section.high < start
+                    && start - section.high <= bound
+                    && (offset - section.high_visit).abs() <= bound))
     }
 
     fn strays_of(&self, source: &dyn PathSource, path_handle: usize) -> Vec<Stray> {
         let visits = forward_visits(source, path_handle);
-        let cuts: Vec<(usize, Cut)> =
-            visits.iter().enumerate().filter_map(|(i, visit)| self.anchor.get(&support::node_id(visit.pos.node)).map(|&cut| (i, cut))).collect();
-        let sections: Vec<Option<Section>> = cuts.windows(2).map(|pair| self.section(&visits, pair[0], pair[1])).collect();
+        let cuts: Vec<(usize, Cut)> = visits
+            .iter()
+            .enumerate()
+            .filter_map(|(i, visit)| {
+                self.anchor
+                    .get(&support::node_id(visit.pos.node))
+                    .map(|&cut| (i, cut))
+            })
+            .collect();
+        let sections: Vec<Option<Section>> = cuts
+            .windows(2)
+            .map(|pair| self.section(&visits, pair[0], pair[1]))
+            .collect();
         // (bin, visit index)
         let mut strays: Vec<(u64, usize)> = Vec::new();
         let mut before = 0;
@@ -436,12 +520,24 @@ impl Sample {
             }
             let at_cut = before < cuts.len() && cuts[before].0 == i;
             let around = [
-                if before >= 1 { sections.get(before - 1).copied().flatten() } else { None },
-                if at_cut { sections.get(before).copied().flatten() } else { None },
+                if before >= 1 {
+                    sections.get(before - 1).copied().flatten()
+                } else {
+                    None
+                },
+                if at_cut {
+                    sections.get(before).copied().flatten()
+                } else {
+                    None
+                },
             ];
             for locus in self.loci.of(support::node_id(visit.pos.node)) {
                 let (reference, bin) = unpack(locus);
-                if !around.iter().flatten().any(|section| self.reached(section, visit.offset, reference, bin)) {
+                if !around
+                    .iter()
+                    .flatten()
+                    .any(|section| self.reached(section, visit.offset, reference, bin))
+                {
                     strays.push((locus, i));
                 }
             }
@@ -452,7 +548,8 @@ impl Sample {
         for next in 1..=strays.len() {
             let split = next == strays.len() || strays[next].0 != strays[first].0 || {
                 let previous = &visits[strays[next - 1].1];
-                visits[strays[next].1].offset - (previous.offset + previous.len) > self.options.gap as i64
+                visits[strays[next].1].offset - (previous.offset + previous.len)
+                    > self.options.gap as i64
             };
             if split {
                 let (reference, bin) = unpack(strays[first].0);
@@ -478,7 +575,10 @@ impl Sample {
 fn reference_samples(source: &dyn PathSource, anchors: &Anchors) -> Vec<(String, BTreeSet<usize>)> {
     let mut by_sample: HashMap<String, BTreeSet<usize>> = HashMap::new();
     for &handle in &anchors.reference_paths {
-        by_sample.entry(source.sample_of(handle)).or_default().insert(handle);
+        by_sample
+            .entry(source.sample_of(handle))
+            .or_default()
+            .insert(handle);
     }
     let mut samples: Vec<(String, BTreeSet<usize>)> = by_sample.into_iter().collect();
     samples.sort();
@@ -531,7 +631,13 @@ impl Runner for Threads<'_> {
     }
 }
 
-pub fn strays(runner: &dyn Runner, anchors: &Anchors, spacing: usize, options: Options, snarls: &Snarls) -> Output {
+pub fn strays(
+    runner: &dyn Runner,
+    anchors: &Anchors,
+    spacing: usize,
+    options: Options,
+    snarls: &Snarls,
+) -> Output {
     let mut out = Output::empty();
     out.snarls_modeled = snarls.modeled;
     out.chain_links = snarls.links;
@@ -543,9 +649,22 @@ pub fn strays(runner: &dyn Runner, anchors: &Anchors, spacing: usize, options: O
     let inside = snarls.inside_paths(source);
     for (name, reference) in reference_samples(source, anchors) {
         let started = Instant::now();
-        let mut sample = Sample { anchor: HashMap::new(), loci: Loci::new(source.max_node_id()), options, reference };
-        for a in anchors.rows.iter().filter(|a| sample.reference.contains(&(a.path_handle as usize))) {
-            let cut = Cut::One(a.path_handle as usize, (a.anchor_offset as usize / spacing) as i64, a.path_offset as i64);
+        let mut sample = Sample {
+            anchor: HashMap::new(),
+            loci: Loci::new(source.max_node_id()),
+            options,
+            reference,
+        };
+        for a in anchors
+            .rows
+            .iter()
+            .filter(|a| sample.reference.contains(&(a.path_handle as usize)))
+        {
+            let cut = Cut::One(
+                a.path_handle as usize,
+                (a.anchor_offset as usize / spacing) as i64,
+                a.path_offset as i64,
+            );
             sample
                 .anchor
                 .entry(support::node_id(a.node_handle as usize))
@@ -568,12 +687,22 @@ pub fn strays(runner: &dyn Runner, anchors: &Anchors, spacing: usize, options: O
             let parts: Vec<BinNodes> = encode_ids(&nodes)
                 .into_iter()
                 .enumerate()
-                .map(|(part, nodes)| BinNodes { reference_handle: *handle as u32, bin: *bin as u32, part: part as u32, nodes })
+                .map(|(part, nodes)| BinNodes {
+                    reference_handle: *handle as u32,
+                    bin: *bin as u32,
+                    part: part as u32,
+                    nodes,
+                })
                 .collect();
             listed.lock().unwrap().extend(parts);
         });
         let listed = listed.into_inner().unwrap();
-        eprintln!("Listed the nodes of {} bins for reference sample {} in {:.0} s", bins.len(), name, started.elapsed().as_secs_f64());
+        eprintln!(
+            "Listed the nodes of {} bins for reference sample {} in {:.0} s",
+            bins.len(),
+            name,
+            started.elapsed().as_secs_f64()
+        );
         let found = Mutex::new(Vec::new());
         runner.run(paths, &|source, i| {
             let rows = sample.strays_of(source, i);

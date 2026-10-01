@@ -1,11 +1,11 @@
 # The haplotype index
 
 Upstream gbz-base prints each walk other than the query path as `unknown#N`.
-This package reports the sample, haplotype and contig of every walk, looked up
-in a haplotype index: a sidecar SQLite file that the Rust program
-`gbz-haplotype-index` writes beside the graph database. The graph database stays
-as `gbz-base construct` wrote it, so a haplotype index also works with a
-database someone else hosts.
+[@gmod/gbz-base](https://github.com/GMOD/gbz-base-js) reports the sample,
+haplotype and contig of every walk, looked up in a haplotype index: a sidecar
+SQLite file that the Rust program `gbz-haplotype-index` writes beside the graph
+database. The graph database stays as `gbz-base construct` wrote it, so a
+haplotype index also works with a database someone else hosts.
 
 Two things happen at different times. Building the haplotype index happens once
 per graph, and the file covers every haplotype in the graph. Identifying walks
@@ -90,7 +90,7 @@ that fills snarls. `--overwrite` replaces an existing index. `--anchor-spacing`
 defaults to 32,768 bp, and `--anchor-sample` places the anchors, bins and stray
 rows on the paths of one reference sample. A query on a reference path without
 them identifies every walk. `--anchor-spacing 0` writes none. The source is in
-`tools/haplotype-index/`.
+[`src/`](../src).
 
 `--stray-context` sets the largest `context` that the node lists and stray rows
 cover, 1,000 bp by default. A query with a larger `context` identifies every
@@ -254,11 +254,12 @@ The query identifies every walk when one of these holds, and
 
 When the keep route returns without falling back, it has recorded every piece
 that each chosen path leaves in the subgraph. The proof below follows the code
-on both sides, `src/chosenPaths.ts` and `tools/haplotype-index/src/strays.rs`,
-so a change to either can be checked against it. The fuzzer tests the same
-claim, and the proof names the comparisons it rests on. The one omission found
-so far, the fixture `anchor-at-bound`, was a comparison that broke part 3 of the
-proof.
+on both sides,
+[`src/chosenPaths.ts`](https://github.com/GMOD/gbz-base-js/blob/main/src/chosenPaths.ts)
+in gbz-base-js and [`src/strays.rs`](../src/strays.rs), so a change to either
+can be checked against it. The fuzzer tests the same claim, and the proof names
+the comparisons it rests on. The one omission found so far, the fixture
+`anchor-at-bound`, was a comparison that broke part 3 of the proof.
 
 **Notation.** R is the query's reference path, `spacing` the anchor spacing,
 `bin` the bin length and `bound` the walks' reach (`--stray-bound`). The window
@@ -419,7 +420,8 @@ alone.
 
 We ran the index described under
 [Building the haplotype index](#building-the-haplotype-index) from local copies
-of both files, with the scripts in `tools/validate/`.
+of both files, with the scripts in
+[`tools/validate/`](https://github.com/GMOD/gbz-base-js/blob/main/tools/validate).
 
 Each query ran on the keep route and on the sampled route, and we compared the
 GFA and the alignment records of the two:
@@ -447,7 +449,8 @@ alone. The sampled route returned those pieces, with the same path and
 coordinates, in each of the 8,260 subgraphs of the first two rows: 21,653,445
 pieces.
 
-`test/fuzz/` generates graphs with inversions, duplications, contigs split into
+[`test/fuzz/`](https://github.com/GMOD/gbz-base-js/blob/main/test/fuzz) in
+gbz-base-js generates graphs with inversions, duplications, contigs split into
 fragments and contigs that visit no anchor, and reads the pieces from the GFA.
 Over 18,500 graphs, 582,634 sampled queries and 7,322,972 queries that use the
 `keep` option returned those pieces, 6,974,349 of the second on the keep route.
@@ -457,9 +460,10 @@ and path ends only, bins of 1 bp, bounds under the spacing, and windows aimed at
 the bound around each anchor. The keep route answered 1,706,363 queries in seven
 such runs, and none differed from the GFA. The audit found one omission by
 reasoning, at an anchor whose node starts exactly `bound` past the window's
-bins, and fixed it with a fixture (`test/data/anchor-at-bound.gfa`). The trigger
-needs a node longer than half the anchor spacing, 65,536 bp in this index, and
-the longest node in HPRC v2.1 is 1,024 bp.
+bins, and fixed it with a fixture
+([`test/data/anchor-at-bound.gfa`](https://github.com/GMOD/gbz-base-js/blob/main/test/data/anchor-at-bound.gfa)).
+The trigger needs a node longer than half the anchor spacing, 65,536 bp in this
+index, and the longest node in HPRC v2.1 is 1,024 bp.
 
 The fuzzer now builds each database with top-level chains from a vg distance
 index, so its queries fill snarls; before that, most generated graphs had no
