@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 560" font-family="Helvetica, Arial, sans-serif" font-size="11">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="20" y="24" fill="#24292f" font-weight="bold">Walks that reach a visit to bin b (parts 2 to 4)</text>
+<text x="20" y="42" fill="#24292f">Positions along the reference path R, for a window that touches one bin, so lo and hi are the ends of b. The walks run</text>
+<text x="20" y="58" fill="#24292f">along the chosen path P, drawn here for a P that follows R.</text>
+<rect x="300" y="96" width="140" height="264" fill="#fff8c5"/>
+<line x1="190" y1="74" x2="190" y2="360" stroke="#d0d7de" stroke-dasharray="3 3"/>
+<line x1="300" y1="74" x2="300" y2="360" stroke="#d0d7de" stroke-dasharray="3 3"/>
+<line x1="440" y1="74" x2="440" y2="360" stroke="#d0d7de" stroke-dasharray="3 3"/>
+<line x1="550" y1="74" x2="550" y2="360" stroke="#d0d7de" stroke-dasharray="3 3"/>
+<rect x="300" y="74" width="140" height="18" fill="#fff8c5" stroke="#9a6700"/>
+<text x="370.0" y="87" text-anchor="middle" fill="#24292f">b</text>
+<text x="190" y="87" text-anchor="middle" fill="#57606a" font-size="10">lo − bound</text>
+<text x="550" y="87" text-anchor="middle" fill="#57606a" font-size="10">hi + bound</text>
+<text x="296" y="104" text-anchor="end" fill="#57606a" font-size="10">lo</text>
+<text x="444" y="104" text-anchor="start" fill="#57606a" font-size="10">hi</text>
+<text x="20" y="130" fill="#24292f"><tspan font-weight="bold">(i)</tspan> The span from a(k) to a(k + 1) meets b, so the query walks the section and bound past both visits.</text>
+<line x1="140" y1="150" x2="510" y2="150" stroke="#1a7f37" stroke-width="3"/>
+<line x1="250" y1="150" x2="400" y2="150" stroke="#57606a" stroke-width="1.5"/>
+<circle cx="250" cy="150" r="4" fill="#1a7f37"/>
+<text x="250" y="166" text-anchor="middle" fill="#57606a" font-size="10">a(k)</text>
+<circle cx="400" cy="150" r="4" fill="#1a7f37"/>
+<text x="400" y="166" text-anchor="middle" fill="#57606a" font-size="10">a(k + 1)</text>
+<text x="20" y="200" fill="#24292f"><tspan font-weight="bold">(ii)</tspan> a(k) lies up to bound past b, so the query walks bound to each side of the visit to a(k).</text>
+<line x1="500" y1="220" x2="660" y2="220" stroke="#57606a" stroke-width="1.5"/>
+<line x1="390" y1="220" x2="610" y2="220" stroke="#1a7f37" stroke-width="3"/>
+<circle cx="500" cy="220" r="4" fill="#1a7f37"/>
+<text x="500" y="236" text-anchor="middle" fill="#57606a" font-size="10">a(k)</text>
+<circle cx="660" cy="220" r="4" fill="#1a7f37"/>
+<text x="660" y="236" text-anchor="middle" fill="#57606a" font-size="10">a(k + 1)</text>
+<text x="20" y="270" fill="#24292f"><tspan font-weight="bold">(iii)</tspan> a(k + 1) lies up to bound before b, so the query walks bound to each side of the visit to a(k + 1).</text>
+<line x1="90" y1="290" x2="240" y2="290" stroke="#57606a" stroke-width="1.5"/>
+<line x1="130" y1="290" x2="350" y2="290" stroke="#1a7f37" stroke-width="3"/>
+<circle cx="90" cy="290" r="4" fill="#1a7f37"/>
+<text x="90" y="306" text-anchor="middle" fill="#57606a" font-size="10">a(k)</text>
+<circle cx="240" cy="290" r="4" fill="#1a7f37"/>
+<text x="240" y="306" text-anchor="middle" fill="#57606a" font-size="10">a(k + 1)</text>
+<text x="20" y="330" fill="#24292f"><tspan font-weight="bold">stray</tspan> The indexer writes every other visit to a node of b into a stray row of b, which the query walks.</text>
+<line x1="346" y1="350" x2="392" y2="350" stroke="#0969da" stroke-width="3"/>
+<line x1="346" y1="345" x2="346" y2="355" stroke="#0969da" stroke-width="1.5"/>
+<line x1="362" y1="345" x2="362" y2="355" stroke="#0969da" stroke-width="1.5"/>
+<line x1="392" y1="345" x2="392" y2="355" stroke="#0969da" stroke-width="1.5"/>
+<text x="20" y="404" fill="#24292f" font-weight="bold">Anchors the query reads (part 3)</text>
+<text x="20" y="420" fill="#24292f">Every anchor from the last one before lo − bound to the first one past hi + bound. An anchor at exactly hi + bound</text>
+<text x="20" y="436" fill="#24292f">reaches b under case (ii), so the query also reads the one after it to plan that section (fixed in 4c7f8f8).</text>
+<line x1="190" y1="478" x2="190" y2="502" stroke="#d0d7de" stroke-dasharray="3 3"/>
+<line x1="550" y1="478" x2="550" y2="502" stroke="#d0d7de" stroke-dasharray="3 3"/>
+<rect x="300" y="487" width="140" height="6" fill="#fff8c5" stroke="#9a6700"/>
+<line x1="30" y1="490" x2="730" y2="490" stroke="#57606a" stroke-width="1.5"/>
+<line x1="160" y1="468" x2="670" y2="468" stroke="#1a7f37" stroke-width="1.5"/>
+<line x1="160" y1="464" x2="160" y2="472" stroke="#1a7f37" stroke-width="1.5"/>
+<line x1="670" y1="464" x2="670" y2="472" stroke="#1a7f37" stroke-width="1.5"/>
+<text x="415" y="463" text-anchor="middle" fill="#1a7f37" font-size="10">read</text>
+<circle cx="60" cy="490" r="4" fill="#ffffff" stroke="#57606a" stroke-width="1.5"/>
+<circle cx="160" cy="490" r="4" fill="#1a7f37"/>
+<circle cx="270" cy="490" r="4" fill="#1a7f37"/>
+<circle cx="380" cy="490" r="4" fill="#1a7f37"/>
+<circle cx="470" cy="490" r="4" fill="#1a7f37"/>
+<circle cx="550" cy="490" r="4" fill="#1a7f37"/>
+<circle cx="670" cy="490" r="4" fill="#1a7f37"/>
+<text x="160" y="508" text-anchor="middle" fill="#57606a" font-size="10">before lo − bound</text>
+<text x="370.0" y="508" text-anchor="middle" fill="#57606a" font-size="10">b</text>
+<text x="550" y="508" text-anchor="middle" fill="#57606a" font-size="10">at hi + bound</text>
+<text x="670" y="508" text-anchor="middle" fill="#57606a" font-size="10">past it</text>
+<line x1="20" y1="540" x2="44" y2="540" stroke="#1a7f37" stroke-width="3"/>
+<text x="50" y="544" fill="#24292f">a walk the query plans</text>
+<line x1="200" y1="540" x2="224" y2="540" stroke="#57606a" stroke-width="1.5"/>
+<text x="230" y="544" fill="#24292f">the section between two anchor visits</text>
+<line x1="440" y1="540" x2="464" y2="540" stroke="#0969da" stroke-width="3"/>
+<text x="470" y="544" fill="#24292f">a stray row</text>
+<circle cx="570" cy="540" r="4" fill="#1a7f37"/>
+<text x="580" y="544" fill="#24292f">a visit to an anchor</text>
+</svg>

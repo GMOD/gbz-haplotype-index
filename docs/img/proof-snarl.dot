@@ -1,0 +1,48 @@
+// Source for docs/img/proof-snarl.svg, which docs/haplotype-index.md embeds in
+// part 5 of the proof that the keep route finds every piece.
+// Regenerate with: dot -Tsvg docs/img/proof-snarl.dot -o docs/img/proof-snarl.svg
+// Palette matches naming-routes.dot.
+digraph proofsnarl {
+  rankdir=LR
+  bgcolor="white"
+  nodesep=0.3
+  ranksep=0.45
+  node [shape=box style="filled,rounded" fillcolor="#f6f8fa" color="#57606a"
+        fontname="Helvetica" fontsize=10 margin="0.12,0.06"]
+  edge [color="#8c959f" fontname="Helvetica" fontsize=9 arrowsize=0.6]
+
+  u [label="node outside\nthe snarl"]
+  y [label="boundary y\nin S before any fill,\nlisted in a bin F to L" fillcolor="#fff8c5" color="#9a6700"]
+  z [label="boundary z\nin S before any fill" fillcolor="#fff8c5" color="#9a6700"]
+  w [label="node outside\nthe snarl"]
+
+  subgraph cluster_region {
+    label="region the query fills: all in S after the fill,\nand the nodes it added are I"
+    labelloc="b"
+    fontname="Helvetica"
+    fontsize=10
+    fontcolor="#57606a"
+    color="#d0d7de"
+    style="rounded"
+    margin=12
+    r1 [label="r1"]
+    r2 [label="r2"]
+    r3 [label="r3"]
+  }
+
+  u -> y
+  y -> r1
+  y -> r2
+  r1 -> r3
+  r2 -> r3
+  r3 -> z
+  z -> w
+
+  edge [penwidth=2.5 arrowsize=0.7]
+  u -> y [color="#1a7f37" fontcolor="#1a7f37" label="a path that enters\nthe region"]
+  y -> r1 [color="#1a7f37"]
+  r1 -> r3 [color="#1a7f37"]
+  r3 -> z [color="#1a7f37"]
+  z -> w [color="#1a7f37"]
+  r2 -> r3 [color="#0969da" fontcolor="#0969da" label="a path inside the\nregion end to end"]
+}

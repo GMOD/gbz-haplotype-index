@@ -314,6 +314,8 @@ reached when one of these holds:
 The indexer writes every visit to a node of b that none of these reaches into a
 stray row of b, and a row runs from its first stray to its last.
 
+![For a window of one bin b: in case (i) the anchors' span meets b and the query walks the section and bound past both visits; in case (ii) a(k) lies up to bound past b and the query walks bound to each side of its visit; case (iii) mirrors it before b; every other visit to a node of b is in a stray row. Below, the query reads every anchor from the last before lo − bound to the first past hi + bound, so an anchor at exactly hi + bound brings in the one after it](img/proof-reach.svg)
+
 **Part 3: the query reads both anchors of every such section.** Each case of
 part 2 gives `a(k) ≤ hi + bound` and `a(k + 1) ≥ lo − bound`. The query reads
 every multiple from `lowest` to `highest`, moving `lowest` down while
@@ -368,6 +370,11 @@ a node x of S.
   naming the snarl in every bin that lists the lower boundary node. The query's
   check found that node in a bin from F to L, so the query reads the row and
   walks all of P.
+
+![A filled snarl between boundary nodes y and z, both in the subgraph before any fill. A path that enters the region leaves it only through y or z, so its piece through the region holds a visit to y or z. A path inside the region from end to end has a row naming the snarl](img/proof-snarl.svg)
+
+The source of the snarl figure is [proof-snarl.dot](img/proof-snarl.dot); the
+figure of the walks is hand-written SVG.
 
 Every piece of P in S therefore holds a visit that some walk passes, and a walk
 that passes a visit records the maximal piece through it.
