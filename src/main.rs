@@ -2,12 +2,13 @@ use gbz::bwt::BWT;
 use gbz::support;
 use gbz::{Orientation, Pos, ENDMARKER, GBWT, GBZ};
 use gbz_base::{GBZBase, GraphInterface};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OpenFlags};
 use simple_sds::serialize;
 
+mod encode;
 mod strays;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::process;
 use std::thread;
@@ -65,6 +66,9 @@ Options:
   --stray-bound BP     bp a walk runs past an anchor visit (default 32768)
   --stray-gap BP       bp between strays that starts a new row (default 1024)
   --forward-only       sample only the forward orientation of each path
+  --page-size BYTES    SQLite page size of index.db, a power of two from 512
+                       to 65536 (default 65536: one page per 64 KiB block of
+                       a remote reader, and shallower b-trees)
   --overwrite          replace index.db if it exists
   --threads N          walker threads for the GBZ route
 ";
@@ -85,6 +89,7 @@ struct Args {
     stray_bound: usize,
     stray_gap: usize,
     forward_only: bool,
+    page_size: usize,
     threads: usize,
 }
 
@@ -95,6 +100,7 @@ impl Args {
             bin: self.stray_bin,
             bound: self.stray_bound,
             gap: self.stray_gap,
+            part_bytes: encode::part_limit(self.page_size) / 2,
         }
     }
 }
@@ -110,6 +116,7 @@ fn parse_args() -> Args {
     let mut stray_bound = 32768;
     let mut stray_gap = 1024;
     let mut forward_only = false;
+    let mut page_size: usize = 65536;
     let mut from_db = false;
     let mut overwrite = false;
     let mut threads = thread::available_parallelism()
@@ -165,12 +172,25 @@ fn parse_args() -> Args {
                     process::exit(1);
                 });
             }
+            "--page-size" => {
+                let value = iter.next().unwrap_or_default();
+                page_size = value.parse().unwrap_or(0);
+                if !(512..=65536).contains(&page_size) || !page_size.is_power_of_two() {
+                    eprintln!("Invalid --page-size: {}", value);
+                    process::exit(1);
+                }
+            }
             "--forward-only" => forward_only = true,
             "--from-db" => from_db = true,
             "--overwrite" => overwrite = true,
             "-h" | "--help" => {
                 eprint!("{}", USAGE);
                 process::exit(0);
+            }
+            _ if arg.starts_with("--") => {
+                eprintln!("Unknown option {}", arg);
+                eprint!("{}", USAGE);
+                process::exit(1);
             }
             _ => positional.push(arg),
         }
@@ -206,6 +226,7 @@ fn parse_args() -> Args {
         stray_bound,
         stray_gap,
         forward_only,
+        page_size,
         threads,
     }
 }
@@ -715,7 +736,7 @@ const SCHEMA: &str = "CREATE TABLE HaplotypeSamples (
     orientation INTEGER NOT NULL,
     path_offset INTEGER NOT NULL,
     PRIMARY KEY (node_handle, node_offset)
-) STRICT;
+) STRICT, WITHOUT ROWID;
 CREATE TABLE HaplotypeLengths (
     path_handle INTEGER PRIMARY KEY,
     length INTEGER NOT NULL
@@ -727,29 +748,43 @@ CREATE TABLE Tags (
 CREATE TABLE HaplotypeAnchors (
     path_handle INTEGER NOT NULL,
     anchor_offset INTEGER NOT NULL,
+    part INTEGER NOT NULL,
     node_handle INTEGER NOT NULL,
     path_offset INTEGER NOT NULL,
-    PRIMARY KEY (path_handle, anchor_offset)
-) STRICT;
-CREATE TABLE HaplotypeStrays (
-    reference_handle INTEGER NOT NULL,
-    bin INTEGER NOT NULL,
-    path_handle INTEGER NOT NULL,
-    path_start INTEGER NOT NULL,
-    snarl_low INTEGER NOT NULL,
-    snarl_high INTEGER NOT NULL,
-    path_end INTEGER NOT NULL,
-    node_handle INTEGER NOT NULL,
-    node_offset INTEGER NOT NULL,
-    PRIMARY KEY (reference_handle, bin, path_handle, path_start, snarl_low, snarl_high)
+    visits BLOB NOT NULL,
+    PRIMARY KEY (path_handle, anchor_offset, part)
 ) STRICT, WITHOUT ROWID;
-CREATE TABLE HaplotypeBinNodes (
+CREATE TABLE HaplotypeBins (
     reference_handle INTEGER NOT NULL,
     bin INTEGER NOT NULL,
     part INTEGER NOT NULL,
     nodes BLOB NOT NULL,
+    strays BLOB NOT NULL,
     PRIMARY KEY (reference_handle, bin, part)
 ) STRICT, WITHOUT ROWID;";
+
+// The layout of the tables, which the reader tests for. Format 3 stores the
+// samples in their key b-tree, each anchor with the visits through its node
+// and each bin with its stray rows, so a window's rows come in a few reads.
+const FORMAT: &str = "3";
+
+// The forward samples at both handles of an anchor's node, from the samples
+// sorted by (node_handle, node_offset).
+fn visits_at(samples: &[Sample], node_handle: u32) -> Vec<Sample> {
+    let id = support::node_id(node_handle as usize) as u32;
+    let mut visits = Vec::new();
+    for handle in [2 * id, 2 * id + 1] {
+        let from = samples.partition_point(|s| s.node_handle < handle);
+        visits.extend(
+            samples[from..]
+                .iter()
+                .take_while(|s| s.node_handle == handle)
+                .filter(|s| s.orientation == Orientation::Forward as u8)
+                .copied(),
+        );
+    }
+    visits
+}
 
 fn write(
     target: &str,
@@ -768,15 +803,24 @@ fn write(
         samples.len(),
         started.elapsed().as_secs_f64()
     );
-    let mut connection = Connection::open(target).unwrap_or_else(|e| {
-        eprintln!("Cannot open {}: {}", target, e);
+    let partial = format!("{}.partial", target);
+    let _ = std::fs::remove_file(&partial);
+    let mut connection = Connection::open(&partial).unwrap_or_else(|e| {
+        eprintln!("Cannot open {}: {}", partial, e);
         process::exit(1);
     });
     connection
-        .execute_batch("PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;")
+        .execute_batch(&format!(
+            "PRAGMA page_size = {}; PRAGMA journal_mode = OFF; PRAGMA synchronous = OFF;",
+            args.page_size
+        ))
         .unwrap();
     connection.execute_batch(SCHEMA).unwrap();
+    let limit = encode::part_limit(args.page_size);
     let transaction = connection.transaction().unwrap();
+    let mut anchor_parts = 0;
+    let mut bin_parts = 0;
+    let mut bin_bytes = 0;
     {
         let mut write_sample = transaction
             .prepare("INSERT INTO HaplotypeSamples(node_handle, node_offset, path_handle, orientation, path_offset) VALUES (?1, ?2, ?3, ?4, ?5)")
@@ -801,82 +845,89 @@ fn write(
                 .unwrap();
         }
         let mut write_anchor = transaction
-            .prepare("INSERT INTO HaplotypeAnchors(path_handle, anchor_offset, node_handle, path_offset) VALUES (?1, ?2, ?3, ?4)")
+            .prepare("INSERT INTO HaplotypeAnchors(path_handle, anchor_offset, part, node_handle, path_offset, visits) VALUES (?1, ?2, ?3, ?4, ?5, ?6)")
             .unwrap();
         let mut rows: Vec<&Anchor> = anchors.rows.iter().collect();
         rows.sort_unstable_by_key(|a| (a.path_handle, a.anchor_offset));
         for a in rows {
-            write_anchor
-                .execute(params![
-                    a.path_handle as i64,
-                    a.anchor_offset as i64,
-                    a.node_handle as i64,
-                    a.path_offset as i64
-                ])
-                .unwrap();
+            let mut parts = encode::encode_visits(&visits_at(&samples, a.node_handle), limit);
+            if parts.is_empty() {
+                parts.push(Vec::new());
+            }
+            for (part, visits) in parts.iter().enumerate() {
+                write_anchor
+                    .execute(params![
+                        a.path_handle as i64,
+                        a.anchor_offset as i64,
+                        part as i64,
+                        a.node_handle as i64,
+                        a.path_offset as i64,
+                        visits
+                    ])
+                    .unwrap();
+                anchor_parts += 1;
+            }
         }
-        let mut write_stray = transaction
-            .prepare("INSERT INTO HaplotypeStrays(reference_handle, bin, path_handle, path_start, snarl_low, snarl_high, path_end, node_handle, node_offset) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)")
-            .unwrap();
-        for r in strays.rows.iter() {
-            write_stray
-                .execute(params![
-                    r.reference_handle as i64,
-                    r.bin as i64,
-                    r.path_handle as i64,
-                    r.path_start as i64,
-                    r.snarl_low as i64,
-                    r.snarl_high as i64,
-                    r.path_end as i64,
-                    r.node_handle as i64,
-                    r.node_offset as i64
-                ])
-                .unwrap();
-        }
-        let mut write_bin = transaction.prepare("INSERT INTO HaplotypeBinNodes(reference_handle, bin, part, nodes) VALUES (?1, ?2, ?3, ?4)").unwrap();
+        let mut write_bin = transaction.prepare("INSERT INTO HaplotypeBins(reference_handle, bin, part, nodes, strays) VALUES (?1, ?2, ?3, ?4, ?5)").unwrap();
+        let mut by_bin: BTreeMap<(u32, u32), (Vec<&Vec<u8>>, Vec<strays::Stray>)> =
+            BTreeMap::new();
         for b in strays.bins.iter() {
-            write_bin
-                .execute(params![
-                    b.reference_handle as i64,
-                    b.bin as i64,
-                    b.part as i64,
-                    b.nodes
-                ])
-                .unwrap();
+            by_bin
+                .entry((b.reference_handle, b.bin))
+                .or_default()
+                .0
+                .push(&b.nodes);
+        }
+        for r in strays.rows.iter() {
+            by_bin
+                .entry((r.reference_handle, r.bin))
+                .or_default()
+                .1
+                .push(*r);
+        }
+        let empty = Vec::new();
+        for ((reference_handle, bin), (node_parts, rows)) in by_bin {
+            let stray_parts = encode::encode_strays(&rows, limit / 2);
+            for part in 0..node_parts.len().max(stray_parts.len()) {
+                let nodes = node_parts.get(part).copied().unwrap_or(&empty);
+                let strays = stray_parts.get(part).unwrap_or(&empty);
+                write_bin
+                    .execute(params![
+                        reference_handle as i64,
+                        bin as i64,
+                        part as i64,
+                        nodes,
+                        strays
+                    ])
+                    .unwrap();
+                bin_parts += 1;
+                bin_bytes += nodes.len() + strays.len();
+            }
         }
         let mut write_tag = transaction
             .prepare("INSERT INTO Tags(key, value) VALUES (?1, ?2)")
             .unwrap();
-        write_tag
-            .execute(params![
+        let tags = [
+            ("haplotype_index_format", FORMAT.to_string()),
+            (
                 "haplotype_index_tool_version",
-                env!("CARGO_PKG_VERSION")
-            ])
-            .unwrap();
-        write_tag
-            .execute(params![
-                "haplotype_index_interval",
-                args.interval.to_string()
-            ])
-            .unwrap();
-        write_tag
-            .execute(params![
+                env!("CARGO_PKG_VERSION").to_string(),
+            ),
+            ("haplotype_index_interval", args.interval.to_string()),
+            (
                 "haplotype_index_reference_interval",
-                args.reference_interval.to_string()
-            ])
-            .unwrap();
-        write_tag
-            .execute(params![
+                args.reference_interval.to_string(),
+            ),
+            (
                 "haplotype_index_orientations",
-                if args.forward_only { "forward" } else { "both" }
-            ])
-            .unwrap();
-        write_tag
-            .execute(params!["haplotype_index_paths", paths.to_string()])
-            .unwrap();
-        write_tag
-            .execute(params!["haplotype_index_nodes", nodes.to_string()])
-            .unwrap();
+                if args.forward_only { "forward" } else { "both" }.to_string(),
+            ),
+            ("haplotype_index_paths", paths.to_string()),
+            ("haplotype_index_nodes", nodes.to_string()),
+        ];
+        for (key, value) in tags.iter() {
+            write_tag.execute(params![key, value]).unwrap();
+        }
         if args.anchor_spacing > 0 {
             let anchor_tags = [
                 (
@@ -913,10 +964,7 @@ fn write(
                 ("haplotype_index_stray_gap", args.stray_gap.to_string()),
                 ("haplotype_index_stray_samples", strays.samples.join(",")),
                 ("haplotype_index_stray_rows", strays.rows.len().to_string()),
-                (
-                    "haplotype_index_stray_bin_parts",
-                    strays.bins.len().to_string(),
-                ),
+                ("haplotype_index_stray_bin_parts", bin_parts.to_string()),
                 (
                     "haplotype_index_stray_snarls",
                     if strays.snarls_modeled {
@@ -942,21 +990,37 @@ fn write(
         }
     }
     transaction.commit().unwrap();
+    if let Err((_, e)) = connection.close() {
+        eprintln!("Cannot close {}: {}", partial, e);
+        process::exit(1);
+    }
+    std::fs::rename(&partial, target).unwrap_or_else(|e| {
+        eprintln!("Cannot move {} to {}: {}", partial, target, e);
+        process::exit(1);
+    });
     eprintln!(
-        "Wrote {} samples, {} anchors, {} stray rows and {} bin parts ({} bytes) for {} paths to {} in {:.0} s",
+        "Wrote {} samples, {} anchors in {} parts, {} stray rows and {} bin parts ({} bytes) for {} paths to {} in {:.0} s",
         samples.len(),
         anchors.rows.len(),
+        anchor_parts,
         strays.rows.len(),
-        strays.bins.len(),
-        strays.bins.iter().map(|b| b.nodes.len()).sum::<usize>(),
+        bin_parts,
+        bin_bytes,
         paths,
         target,
         started.elapsed().as_secs_f64()
     );
 }
 
+fn open_read_only(db: &str) -> Connection {
+    Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap_or_else(|e| {
+        eprintln!("Cannot open {}: {}", db, e);
+        process::exit(1);
+    })
+}
+
 fn count_from_db(db: &str, key: &str) -> usize {
-    let connection = Connection::open(db).unwrap();
+    let connection = open_read_only(db);
     let value: String = connection
         .query_row(
             "SELECT value FROM Tags WHERE key = ?1",
@@ -968,7 +1032,7 @@ fn count_from_db(db: &str, key: &str) -> usize {
 }
 
 fn max_node_id_from_db(db: &str) -> usize {
-    let connection = Connection::open(db).unwrap();
+    let connection = open_read_only(db);
     let handle: i64 = connection
         .query_row("SELECT max(handle) FROM Nodes", [], |row| row.get(0))
         .unwrap_or(0);
@@ -977,7 +1041,7 @@ fn max_node_id_from_db(db: &str) -> usize {
 
 // The links between the boundary nodes of top-level snarls, as (handle, next).
 fn chain_links(db: &str) -> Vec<(usize, usize)> {
-    let connection = Connection::open(db).unwrap();
+    let connection = open_read_only(db);
     let mut statement = connection
         .prepare("SELECT handle, next FROM Nodes WHERE next IS NOT NULL")
         .unwrap();
@@ -1039,15 +1103,9 @@ fn walk_db(db: &str, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>, Anchors,
 
 fn main() {
     let args = parse_args();
-    if std::path::Path::new(&args.output).exists() {
-        if !args.overwrite {
-            eprintln!("{} exists; pass --overwrite to replace it", args.output);
-            process::exit(1);
-        }
-        std::fs::remove_file(&args.output).unwrap_or_else(|e| {
-            eprintln!("Cannot remove {}: {}", args.output, e);
-            process::exit(1);
-        });
+    if std::path::Path::new(&args.output).exists() && !args.overwrite {
+        eprintln!("{} exists; pass --overwrite to replace it", args.output);
+        process::exit(1);
     }
     let (samples, lengths, paths, nodes, anchors, strays) = match &args.gbz {
         Some(gbz) => {
@@ -1156,6 +1214,7 @@ mod tests {
             stray_bound: 32768,
             stray_gap: 1024,
             forward_only: false,
+            page_size: 4096,
             threads: 1,
         }
     }

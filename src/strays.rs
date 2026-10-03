@@ -29,6 +29,7 @@
 // naming the snarl, listed in the bins of the snarl's lower boundary node.
 
 use super::{Anchors, PathSource};
+use crate::encode::encode_ids;
 use gbz::{support, Orientation, Pos, ENDMARKER};
 
 use std::cmp::Reverse;
@@ -41,10 +42,9 @@ use std::time::Instant;
 // A snarl with more nodes between its boundaries is left out, and the reader
 // falls back when it fills one.
 pub const SNARL_NODES: usize = 1 << 20;
-const PART_BYTES: usize = 800;
 const EMPTY: u64 = 0;
 
-pub const RULE: &str = "HaplotypeBinNodes lists, per reference path of each reference sample with anchors and per bin of haplotype_index_stray_bin bp along it, the nodes within haplotype_index_stray_context bp of a reference node overlapping the bin, by the distance of the context expansion, as runs of node ids (LEB128 gap from the previous run's last id, then run length less one) in parts that each restart from 0. HaplotypeStrays lists, per bin and path, the stretches of the path holding visits to the bin's nodes that the walks of the keep route can miss: a visit is reached when it lies in a section between visits to adjacent anchors of the bin's reference path whose anchor span meets the bin, or within haplotype_index_stray_bound bp along the path of a visit to such a section's anchor that lies at most that far outside the bin, and a node that is the anchor of two multiples ends no section; consecutive strays more than haplotype_index_stray_gap bp apart start a new row. A row with snarl_high > 0 names a path whose nodes all lie between those two boundary nodes of a top-level snarl, listed in the bins of the lower one";
+pub const RULE: &str = "HaplotypeBins lists, per reference path of each reference sample with anchors and per bin of haplotype_index_stray_bin bp along it, the nodes within haplotype_index_stray_context bp of a reference node overlapping the bin, by the distance of the context expansion, as runs of node ids (LEB128 gap from the previous run's last id, then run length less one) in parts that each restart from 0, and beside them its stray rows: per bin and path, the stretches of the path holding visits to the bin's nodes that the walks of the keep route can miss: a visit is reached when it lies in a section between visits to adjacent anchors of the bin's reference path whose anchor span meets the bin, or within haplotype_index_stray_bound bp along the path of a visit to such a section's anchor that lies at most that far outside the bin, and a node that is the anchor of two multiples ends no section; consecutive strays more than haplotype_index_stray_gap bp apart start a new row. A row with snarl_high > 0 names a path whose nodes all lie between those two boundary nodes of a top-level snarl, listed in the bins of the lower one";
 
 #[derive(Clone, Copy)]
 pub struct Options {
@@ -52,6 +52,8 @@ pub struct Options {
     pub bin: usize,
     pub bound: usize,
     pub gap: usize,
+    // The most bytes of one node-list part, so a bin's row fits a b-tree cell.
+    pub part_bytes: usize,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -196,45 +198,6 @@ fn forward_visits(source: &dyn PathSource, path_handle: usize) -> Vec<Visit> {
         pos = next;
     }
     visits
-}
-
-fn push_varint(out: &mut Vec<u8>, mut value: usize) {
-    while value >= 0x80 {
-        out.push((value & 0x7f) as u8 | 0x80);
-        value >>= 7;
-    }
-    out.push(value as u8);
-}
-
-// Sorted distinct ids as runs, in parts of at most PART_BYTES that each
-// restart from 0, so a part fits a b-tree cell without overflow pages.
-pub fn encode_ids(ids: &[usize]) -> Vec<Vec<u8>> {
-    let mut parts = Vec::new();
-    let mut part = Vec::new();
-    let mut previous = 0;
-    let mut i = 0;
-    while i < ids.len() {
-        let mut j = i;
-        while j + 1 < ids.len() && ids[j + 1] == ids[j] + 1 {
-            j += 1;
-        }
-        let mut run = Vec::new();
-        push_varint(&mut run, ids[i] - previous);
-        push_varint(&mut run, j - i);
-        if !part.is_empty() && part.len() + run.len() > PART_BYTES {
-            parts.push(std::mem::take(&mut part));
-            run.clear();
-            push_varint(&mut run, ids[i]);
-            push_varint(&mut run, j - i);
-        }
-        part.extend(run);
-        previous = ids[j];
-        i = j + 1;
-    }
-    if !part.is_empty() {
-        parts.push(part);
-    }
-    parts
 }
 
 // The regions the reader's fill of a top-level snarl adds: the nodes reached
@@ -684,7 +647,7 @@ pub fn strays(
             for &id in &nodes {
                 sample.loci.note(id, pack(*handle, *bin));
             }
-            let parts: Vec<BinNodes> = encode_ids(&nodes)
+            let parts: Vec<BinNodes> = encode_ids(&nodes, sample.options.part_bytes)
                 .into_iter()
                 .enumerate()
                 .map(|(part, nodes)| BinNodes {
@@ -745,47 +708,4 @@ pub fn strays(
     out.rows.dedup();
     out.bins.sort_unstable();
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn decode(parts: &[Vec<u8>]) -> Vec<usize> {
-        let mut ids = Vec::new();
-        for part in parts {
-            let mut values = Vec::new();
-            let mut value = 0usize;
-            let mut shift = 0;
-            for &byte in part {
-                value |= ((byte & 0x7f) as usize) << shift;
-                shift += 7;
-                if byte & 0x80 == 0 {
-                    values.push(value);
-                    value = 0;
-                    shift = 0;
-                }
-            }
-            let mut previous = 0;
-            for pair in values.chunks(2) {
-                let start = previous + pair[0];
-                ids.extend(start..=start + pair[1]);
-                previous = start + pair[1];
-            }
-        }
-        ids
-    }
-
-    #[test]
-    fn ids_round_trip_through_runs_and_parts() {
-        let mut ids: Vec<usize> = (5..40).collect();
-        ids.extend([100, 101, 5000, 139_000_000, 139_000_001]);
-        ids.extend((200_000_000..200_000_000 + 3000).step_by(3));
-        ids.sort_unstable();
-        let parts = encode_ids(&ids);
-        assert!(parts.len() > 1);
-        assert!(parts.iter().all(|part| part.len() <= PART_BYTES));
-        assert_eq!(decode(&parts), ids);
-        assert!(encode_ids(&[]).is_empty());
-    }
 }
