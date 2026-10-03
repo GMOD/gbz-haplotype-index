@@ -228,9 +228,9 @@ dependencies = [
 
 [[package]]
 name = "gbz-base"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84ad8a7c2b32c4038653b87166fd6c127ceb7c9b4848051c31e5df7c92110bbd"
+checksum = "c723e44e1def2f7b2406b97391d0756668b4cbc6da4e45e6647954acea646e77"
 dependencies = [
  "clap",
  "flate2",
