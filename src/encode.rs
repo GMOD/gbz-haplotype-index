@@ -13,10 +13,11 @@ pub fn push_varint(out: &mut Vec<u8>, mut value: usize) {
     out.push(value as u8);
 }
 
-// The most payload a cell of an index b-tree keeps on its page, from the
-// SQLite file format, less room for the key columns and the record header.
+// The most payload a cell of a table b-tree keeps on its page, from the SQLite
+// file format, less room for the key columns and the record header. The
+// tables with blobs keep their rowid, so their key index holds the keys alone.
 pub fn part_limit(page_size: usize) -> usize {
-    ((page_size - 12) * 64 / 255 - 23).saturating_sub(64)
+    (page_size - 35).saturating_sub(64)
 }
 
 // Sorted distinct ids as runs, in parts of at most `limit` bytes that each
@@ -196,7 +197,7 @@ pub mod tests {
 
     #[test]
     fn the_part_limit_follows_the_page_size() {
-        assert_eq!(part_limit(4096), 938);
-        assert_eq!(part_limit(65536), 16358);
+        assert_eq!(part_limit(4096), 3997);
+        assert_eq!(part_limit(65536), 65437);
     }
 }

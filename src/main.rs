@@ -42,14 +42,14 @@ position, with its own coordinate, from the rows at one node.
 The index records the graph's path and node counts so the reader catches a
 mismatch at open.
 
-Strays: for each reference sample with anchors, table HaplotypeBinNodes lists
+Strays: for each reference sample with anchors, table HaplotypeBins lists
 the nodes within --stray-context bp of each --stray-bin bp of a reference
-path, and table HaplotypeStrays lists the visits to those nodes that the keep
-route's walks from anchor visits can miss, as rows the reader walks for the
-paths it keeps. A query checks its subgraph against the node lists, so the
-tables hold for a context of at most --stray-context. Give graph.gbz.db, which
-holds the top-level snarls, for the rows to cover a query that fills snarls.
---stray-context 0 writes neither table.
+path, and beside them the visits to those nodes that the keep route's walks
+from anchor visits can miss, as rows the reader walks for the paths it keeps.
+A query checks its subgraph against the node lists, so the table holds for a
+context of at most --stray-context. Give graph.gbz.db, which holds the
+top-level snarls, for the rows to cover a query that fills snarls.
+--stray-context 0 writes none.
 
 Overview: for each reference sample with anchors, tables HaplotypeOverviewRows,
 HaplotypeOverviewBins and HaplotypeOverviewClasses summarize every haplotype
@@ -1248,7 +1248,12 @@ fn walk_db(
         strays::Output::empty()
     };
     let overview = if args.anchor_spacing > 0 {
-        overview::overview(&strays::Serial(&source), &anchors, args.overview_options())
+        overview::overview(
+            &strays::Serial(&source),
+            &anchors,
+            &lengths,
+            args.overview_options(),
+        )
     } else {
         overview::Output::empty()
     };
@@ -1327,6 +1332,7 @@ fn main() {
                         threads: args.threads,
                     },
                     &anchors,
+                    &lengths,
                     args.overview_options(),
                 )
             } else {

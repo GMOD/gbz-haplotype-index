@@ -17,8 +17,10 @@ which a query that keeps a few haplotypes and fills snarls needs. The index also
 carries an [overview](docs/haplotype-index.md#the-overview) of every haplotype
 in bins along each reference path, for views of megabases or a whole
 chromosome. The index is written in format 3, which @gmod/gbz-base reads from
-version 6.1; earlier versions read the format 2 index that gbz-haplotype-index
-0.2 wrote.
+version 6.1. Earlier versions read only the format 2 index that
+gbz-haplotype-index 0.2 wrote, and fail on a format 3 file with "SQLite table
+b-tree contains an index page", so keep a format 2 file hosted while clients
+on 6.0 remain.
 
 ## Docs
 

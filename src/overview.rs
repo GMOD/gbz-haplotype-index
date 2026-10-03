@@ -9,9 +9,11 @@
 // two consecutive such visits is an excursion, which replaces the reference
 // bp between the two nodes with the path's own bp. The path covers the
 // reference from the first of the two nodes to the second, and an excursion
-// of `sv_bp` or more in either measure marks the bins it spans as variant, as
-// does a visit against the reference's orientation, a step backwards or to
-// another reference path, or a jump of more than MAX_JUMP bp.
+// of `sv_bp` or more in either measure marks the bins it spans as variant. A
+// contig reads the reference in either direction, so two visits in the same
+// orientation that step on in that direction are an alignment; a turn, a step
+// back, a jump to another reference path or one of more than MAX_JUMP bp
+// marks both nodes' bins as variant instead.
 //
 // A haplotype is the set of paths with one sample and phase. Per bin it gets
 // one of four classes: absent when none of its paths covers the bin,
@@ -177,7 +179,8 @@ struct Marks {
 impl Marks {
     fn cover(&mut self, reference: usize, from: usize, to: usize) {
         if let Some(last) = self.spans.last_mut() {
-            if last.0 == reference && from <= last.2 {
+            if last.0 == reference && from <= last.2 && to >= last.1 {
+                last.1 = last.1.min(from);
                 last.2 = last.2.max(to);
                 return;
             }
@@ -188,7 +191,8 @@ impl Marks {
 
 fn walk(source: &dyn PathSource, refs: &RefMap, path_handle: usize, sv_bp: usize) -> Marks {
     let mut marks = Marks::default();
-    let mut last: Option<(usize, usize, usize)> = None;
+    // reference, offset, end and orientation of the last reference visit
+    let mut last: Option<(usize, usize, usize, bool)> = None;
     let mut off_bp = 0usize;
     let mut pos = source.start(path_handle, Orientation::Forward);
     while let Some(current) = pos {
@@ -200,29 +204,48 @@ fn walk(source: &dyn PathSource, refs: &RefMap, path_handle: usize, sv_bp: usize
             None => off_bp += len,
             Some((reference, offset, reversed)) => {
                 let end = offset + len;
-                if let Some((r1, o1, e1)) = last {
-                    if r1 == reference && offset >= e1 && offset - e1 <= MAX_JUMP {
-                        let gap = offset - e1;
-                        if gap > 0 || off_bp > 0 {
-                            let bp = gap.max(off_bp);
-                            marks.sites.push((reference, e1, bp));
-                            if bp >= sv_bp {
-                                marks.variant.push((reference, e1, offset.max(e1 + 1)));
+                if let Some((r1, o1, e1, rev1)) = last {
+                    // The reference bp between the visits when the path reads
+                    // on along the reference in its orientation.
+                    let gap = if r1 != reference || rev1 != reversed {
+                        None
+                    } else if !reversed && offset >= e1 {
+                        Some(offset - e1)
+                    } else if reversed && end <= o1 {
+                        Some(o1 - end)
+                    } else {
+                        None
+                    };
+                    match gap {
+                        Some(gap) if gap <= MAX_JUMP => {
+                            if gap > 0 || off_bp > 0 {
+                                let bp = gap.max(off_bp);
+                                let (from, to) = if reversed {
+                                    (end, o1.max(end + 1))
+                                } else {
+                                    (e1, offset.max(e1 + 1))
+                                };
+                                marks.sites.push((reference, from, bp));
+                                if bp >= sv_bp {
+                                    marks.variant.push((reference, from, to));
+                                }
+                            }
+                            if reversed {
+                                marks.cover(reference, offset, e1);
+                            } else {
+                                marks.cover(reference, o1, end);
                             }
                         }
-                        marks.cover(reference, o1, end);
-                    } else {
-                        marks.variant.push((r1, e1.saturating_sub(1), e1));
-                        marks.variant.push((reference, offset, offset + 1));
-                        marks.cover(reference, offset, end);
+                        _ => {
+                            marks.variant.push((r1, o1, e1));
+                            marks.variant.push((reference, offset, end));
+                            marks.cover(reference, offset, end);
+                        }
                     }
                 } else {
                     marks.cover(reference, offset, end);
                 }
-                if reversed {
-                    marks.variant.push((reference, offset, end));
-                }
-                last = Some((reference, offset, end));
+                last = Some((reference, offset, end, reversed));
                 off_bp = 0;
             }
         }
@@ -292,13 +315,32 @@ fn cut(bytes: Vec<u8>, limit: usize) -> Vec<Vec<u8>> {
     bytes.chunks(limit.max(1)).map(|c| c.to_vec()).collect()
 }
 
-pub fn overview(runner: &dyn Runner, anchors: &Anchors, options: Options) -> Output {
+// `lengths` gives every path's length, so that the levels are the same for
+// every reference sample: as many as it takes for the longest anchored path
+// to fit one chunk.
+pub fn overview(
+    runner: &dyn Runner,
+    anchors: &Anchors,
+    lengths: &[(usize, usize)],
+    options: Options,
+) -> Output {
     let mut out = Output::empty();
     if options.bin == 0 {
         return out;
     }
     let source = runner.source();
     let paths = source.path_count();
+    let longest = lengths
+        .iter()
+        .filter(|(handle, _)| anchors.reference_paths.contains(handle))
+        .map(|&(_, length)| length)
+        .max()
+        .unwrap_or(0);
+    let mut level_bins = vec![options.bin];
+    while longest.div_ceil(*level_bins.last().unwrap()) > options.chunk {
+        level_bins.push(level_bins.last().unwrap() * ZOOM);
+    }
+    out.levels = level_bins.len();
     let mut by_name: BTreeMap<Row, Vec<usize>> = BTreeMap::new();
     for handle in 0..paths {
         by_name
@@ -368,21 +410,17 @@ pub fn overview(runner: &dyn Runner, anchors: &Anchors, options: Options) -> Out
             .map(|m| m.into_inner().unwrap())
             .collect();
         let sites = sites.into_inner().unwrap();
-        let longest = refs.lengths.iter().copied().max().unwrap_or(0);
-        let mut levels = Vec::new();
-        let mut bin = options.bin;
-        loop {
-            let counts: Vec<usize> = refs
-                .lengths
-                .iter()
-                .map(|&l| l.div_ceil(bin).max(1))
-                .collect();
-            levels.push(Level { bin, counts });
-            if longest.div_ceil(bin) <= options.chunk {
-                break;
-            }
-            bin *= ZOOM;
-        }
+        let levels: Vec<Level> = level_bins
+            .iter()
+            .map(|&bin| Level {
+                bin,
+                counts: refs
+                    .lengths
+                    .iter()
+                    .map(|&l| l.div_ceil(bin).max(1))
+                    .collect(),
+            })
+            .collect();
         let bytes_per_bin = haplotypes.div_ceil(2);
         for (level_index, level) in levels.iter().enumerate() {
             let factor = level.bin / options.bin;
@@ -395,7 +433,7 @@ pub fn overview(runner: &dyn Runner, anchors: &Anchors, options: Options) -> Out
                     let width: usize = (fine_from..fine_to).map(|f| grid.width(reference, f)).sum();
                     let summary = &mut summaries[b];
                     for f in fine_from..fine_to {
-                        summary[4] += sites[f].small as usize;
+                        summary[4] += (sites[f].small + sites[f].sv) as usize;
                         summary[5] += sites[f].sv as usize;
                         summary[6] = summary[6].max(sites[f].max_bp as usize);
                     }
@@ -438,7 +476,6 @@ pub fn overview(runner: &dyn Runner, anchors: &Anchors, options: Options) -> Out
                 }
             }
         }
-        out.levels = out.levels.max(levels.len());
         eprintln!(
             "Overview of {} haplotypes over {} reference paths of {} in {} levels from {} bp bins, {} class parts, in {:.0} s",
             haplotypes,
@@ -487,12 +524,17 @@ mod tests {
     }
 
     #[test]
-    fn consecutive_covers_merge() {
+    fn consecutive_covers_merge_in_either_direction() {
         let mut marks = Marks::default();
         marks.cover(0, 0, 10);
         marks.cover(0, 10, 20);
         marks.cover(0, 30, 40);
         marks.cover(1, 0, 5);
         assert_eq!(marks.spans, vec![(0, 0, 20), (0, 30, 40), (1, 0, 5)]);
+        let mut reversed = Marks::default();
+        reversed.cover(0, 90, 100);
+        reversed.cover(0, 80, 90);
+        reversed.cover(0, 60, 70);
+        assert_eq!(reversed.spans, vec![(0, 80, 100), (0, 60, 70)]);
     }
 }

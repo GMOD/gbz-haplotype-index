@@ -86,8 +86,10 @@ on a reference path; the stretch between two consecutive visits is an
 excursion, which replaces the reference bp between the two nodes with the
 path's own bp. The path covers the reference from the first node to the second,
 and an excursion of `--overview-sv` bp or more (50) in either measure marks the
-bins it spans as variant, as does a visit against the reference's orientation,
-a step backwards or to another reference path, or a jump of over 10 Mb.
+bins it spans as variant. A contig reads the reference in either direction, so
+two visits in the same orientation that step on in that direction are an
+alignment; a turn, a step back, a jump to another reference path or one of
+over 10 Mb marks both nodes' bins as variant instead.
 
 The paths of one sample and phase make one haplotype, and per bin of
 `--overview-bin` bp (4,096) it gets one of four classes: absent when none of
@@ -102,7 +104,9 @@ of `--overview-chunk` bins (256) per reference path and level;
 per bin; `HaplotypeOverviewRows` names the haplotypes. On chr22 the overview
 of 464 haplotypes takes 15 s per reference sample and 6.8 MB. Whole chr22 at
 16 kb bins is 3,102 bins and 1.4 MB in 11 index requests, 4 of them once per
-session.
+session. The build walks every path once more per reference sample and holds
+8 bytes per node plus 3 bytes per haplotype and bin, about 2 GB more on HPRC
+v2.1 than the figures above.
 
 The word "sample" also means an individual, such as `HG002` in a path name. The
 rest of this page uses it for the index entry, the sense of the GBWT's own
