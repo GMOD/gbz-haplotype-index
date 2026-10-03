@@ -60,9 +60,17 @@ positions, and a window shorter than `--interval` often contains none. A query
 that uses the `keep` option therefore reads the anchor rows, node lists and
 stray rows around the window instead ([below](#keep)).
 
-Table `HaplotypeSamples` contains the samples, `HaplotypeAnchors` lists the
-anchor nodes, `HaplotypeBinNodes` lists the nodes of each bin, `HaplotypeStrays`
-contains the stray rows, and `HaplotypeLengths` lists the length of each path.
+Table `HaplotypeSamples` holds the samples in the b-tree of their key, the node
+and the rank of the visit. `HaplotypeAnchors` names each anchor node and holds,
+as one blob per anchor, the samples of every visit through it. `HaplotypeBins`
+holds each bin's node list beside its stray rows, and `HaplotypeLengths` the
+length of each path. The tag `haplotype_index_format` names this layout, 3. The
+library also reads format 2, which gbz-haplotype-index 0.2 wrote: the samples
+in a rowid table, the anchors without their visits, and the node lists and
+stray rows in two tables. A keep-route query read that layout in about twenty
+single-block requests, most of them b-tree descents four levels deep; format 3
+answers the same query in two short range scans
+([measured below](#requests-per-query)).
 
 The word "sample" also means an individual, such as `HG002` in a path name. The
 rest of this page uses it for the index entry, the sense of the GBWT's own
@@ -87,8 +95,10 @@ rows on the paths of one reference sample. A query on a reference path without
 them identifies every walk. `--anchor-spacing 0` writes none. The source is in
 [`src/`](../src).
 
-`--stray-context` sets the largest `context` that the node lists and stray rows
-cover, 1,000 bp by default. A query with a larger `context` identifies every
+`--page-size` sets the SQLite page size, 65,536 by default, so that one page is
+the 64 KiB block a remote reader fetches and every table is two or three levels
+deep. `--stray-context` sets the largest `context` that the node lists and
+stray rows cover, 1,000 bp by default. A query with a larger `context` identifies every
 walk, and `--stray-context 0` writes neither table. `--stray-bin` sets the bin
 size, `--stray-bound` how far a walk runs past an anchor visit (32,768 bp), and
 `--stray-gap` the distance between two visits that starts a new stray row (1,024
@@ -100,11 +110,14 @@ with `--forward-only`, because about half the contigs in a graph like HPRC's run
 reversed relative to the reference, and identifying a walk on one of those needs
 reverse-orientation samples.
 
-For the 10 GB HPRC v2.1 GRCh38 database, the index with 131,072 bp anchors on
-GRCh38 and CHM13 is 8.1 GB. It holds 178.5 million samples, 5.4 million stray
-rows, and node lists of 3.2 MB for 363,000 bins; the stray rows and node lists
-add 0.2 GB. Building it from the GBZ takes 30-33 minutes on 20 threads and peaks
-at 19.9 GB of memory.
+For the 10 GB HPRC v2.1 GRCh38 database, the format 2 index with 131,072 bp
+anchors on GRCh38 and CHM13 is 8.1 GB. It holds 178.5 million samples, 5.4
+million stray rows, and node lists of 3.2 MB for 363,000 bins; the stray rows
+and node lists add 0.2 GB. Building it from the GBZ takes 30-33 minutes on 20
+threads and peaks at 19.9 GB of memory. On the chr22 part of the same graph,
+1,131 paths and 3.1 million nodes, the same options give a 98 MB index in
+format 2 and a 58 MB one in format 3, which drops the rowid table's second copy
+of every sample key.
 
 ## Using the haplotype index
 
@@ -467,3 +480,42 @@ unplaced contigs. On a window under 3 kb beside an anchor or a bin boundary, the
 keep route took 62-93 ms and the sampled route 19-25 ms, because the keep route
 walks each chosen haplotype from one anchor to the next, 131 kb apart in this
 index, whatever the window's length.
+
+### Requests per query
+
+Over HTTP, a query's cost is the number of range requests more than the bytes,
+since the library issues the reads of one b-tree descent one after another.
+[`tools/requests/`](https://github.com/GMOD/gbz-base-js/blob/main/tools/requests)
+in gbz-base-js counts them. The table gives the median over three random chr22
+windows per size, cold cache, served from local copies of the chr22 database
+(196 MB) and its index, built with the HPRC options above. "Before" is
+@gmod/gbz-base 6.0.1 reading format 2; "after" is the next version reading
+format 3, with its parallel reads and read-ahead. The sampled route returns all
+464 haplotypes; keep1 keeps HG002's two.
+
+| window    | route   | before: requests (graph + index) | before: MB | after: requests (graph + index) | after: MB |
+| --------: | ------- | -------------------------------: | ---------: | ------------------------------: | ---------: |
+|       300 | sampled |                       14 (8 + 6) |        0.9 |                      13 (8 + 5) |        0.9 |
+|       300 | keep1   |                     28 (10 + 18) |        2.7 |                     21 (10 + 11) |        2.2 |
+|    10,000 | sampled |                       13 (8 + 5) |        0.9 |                      13 (8 + 5) |        0.9 |
+|    10,000 | keep1   |                     28 (11 + 17) |        2.3 |                     22 (11 + 11) |        2.0 |
+|   100,000 | sampled |                       17 (8 + 9) |        1.4 |                      13 (8 + 5) |        1.2 |
+|   100,000 | keep1   |                     31 (11 + 20) |        2.7 |                     22 (11 + 11) |        2.2 |
+|   300,000 | sampled |                      29 (11 + 18) |        2.9 |                     16 (11 + 5) |        2.6 |
+|   300,000 | keep1   |                      45 (14 + 31) |        4.5 |                     25 (14 + 11) |        3.6 |
+| 1,000,000 | sampled |                      56 (12 + 44) |        7.1 |                     17 (12 + 5) |        6.0 |
+| 1,000,000 | keep1   |                      70 (15 + 55) |        8.6 |                     27 (15 + 12) |        7.2 |
+| 3,000,000 | sampled |                   307 (181 + 126) |       20.1 |                     70 (63 + 7) |       16.6 |
+| 3,000,000 | keep1   |                   324 (188 + 136) |       21.2 |                     79 (66 + 13) |       17.6 |
+
+Of a keep1 query's 11 index requests, 2 open the file, 1 reads the path's
+length, 2 each read the bins' rows and the anchors' rows, in parallel, and 3
+read the samples on the window's nodes for the check after the walks, which
+now run while the walks do. The graph side is unchanged below 1 Mb: the
+reference walk's node records come in one or two prefetched reads, and the
+rest are nodes the context expansion and the identification reach outside
+them. Past 1 Mb the pager used to refuse a prefetch over half its cache and the
+walk read one block per request; it now fetches the range in chunks as the
+walk approaches them. The 3 Mb windows that still cost 60 to 180 graph
+requests lie in a region where consecutive reference nodes sit a megabyte
+apart in the node table, so each reference node is its own read.

@@ -13,7 +13,9 @@ gbz-haplotype-index --interval 16384 --from-db graph.gbz.db graph.haplotype-inde
 ```
 
 Give `graph.gbz.db` with the GBZ: the tool reads the top-level snarls from it,
-which a query that keeps a few haplotypes and fills snarls needs.
+which a query that keeps a few haplotypes and fills snarls needs. The index is
+written in format 3, which @gmod/gbz-base reads from version 6.1; earlier
+versions read the format 2 index that gbz-haplotype-index 0.2 wrote.
 
 ## Docs
 

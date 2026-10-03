@@ -14,6 +14,11 @@ instead of trusting the rows. The
 [proof](docs/haplotype-index.md#proof-that-the-keep-route-finds-every-piece)
 names the comparisons on both sides that the rule depends on.
 
+The tables' layout is a separate contract, the `haplotype_index_format` tag
+(3). `src/encode.rs` holds the blob encodings; the reader decodes them in its
+`db.ts`. A change to a table or a blob bumps the tag, and the reader refuses a
+format it does not know.
+
 Nothing here checks that the two sides agree. The fuzzer in gbz-base-js does:
 build this crate, then run it from a gbz-base-js checkout with the binary as the
 indexer.
@@ -26,7 +31,9 @@ node test/fuzz/run.ts --seeds 0..150 --scale medium --jobs 4 \
 
 The `fuzz` job in gbz-base-js's `push.yml` lists the index options CI uses.
 After a change to the walk rule, `test/data/build-indexes.sh` there rebuilds the
-fixture indexes and reports the ones that change.
+fixture indexes and reports the ones that change. The fixtures use
+`--page-size 4096` to stay small; micb-kir3dl1 keeps the default 64 KiB pages,
+and its format 2 index stays beside it for the old format's tests.
 
 The test fixture `test/data/split-contig.gbz.db` is a copy of the one in
 gbz-base-js.
