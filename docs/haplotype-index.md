@@ -108,6 +108,18 @@ session. The build walks every path once more per reference sample and holds
 8 bytes per node plus 3 bytes per haplotype and bin, about 2 GB more on HPRC
 v2.1 than the figures above.
 
+On the whole HPRC v2.1 GRCh38 graph, 139.5 million nodes and 464 haplotypes,
+an index built from the GBZ alone with GRCh38 anchors and `--stray-context 0`
+is 4.25 GB, of which the overview is 243 MB at 5 levels, after 70 minutes on
+14 threads. With that index on a local server and the graph database on S3,
+whole chr1 (249 Mb) draws from 3,799 bins of 65.5 kb in 11 index requests and
+1.6 MB once the session is open; opening the hosted graph and reading its
+`Paths` table is 10 requests, 2.9 MB and about 2.4 s per session. A 3 Mb or
+1 Mb window costs the same; a 100 kb window at AMY1 draws its 1,463
+alignments from the graph in 53 requests and 6.9 MB.
+[`tools/overview/`](https://github.com/GMOD/gbz-base-js/blob/main/tools/overview)
+in gbz-base-js draws these views to a PNG from Node or in a page.
+
 The word "sample" also means an individual, such as `HG002` in a path name. The
 rest of this page uses it for the index entry, the sense of the GBWT's own
 document array samples.
