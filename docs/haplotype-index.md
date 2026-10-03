@@ -109,14 +109,14 @@ session. The build walks every path once more per reference sample and holds
 v2.1 than the figures above.
 
 On the whole HPRC v2.1 GRCh38 graph, 139.5 million nodes and 464 haplotypes,
-an index built from the GBZ alone with GRCh38 anchors and `--stray-context 0`
-is 4.25 GB, of which the overview is 243 MB at 5 levels, after 70 minutes on
-14 threads. With that index on a local server and the graph database on S3,
-whole chr1 (249 Mb) draws from 3,799 bins of 65.5 kb in 11 index requests and
-1.6 MB once the session is open; opening the hosted graph and reading its
-`Paths` table is 10 requests, 2.9 MB and about 2.4 s per session. A 3 Mb or
-1 Mb window costs the same; a 100 kb window at AMY1 draws its 1,463
-alignments from the graph in 53 requests and 6.9 MB.
+the index above serves whole chr1 (249 Mb) from 3,799 bins of 65.5 kb in 11
+index requests and 1.6 MB once the session is open, and whole CHM13 chr1 the
+same way. With the index on a local server and the graph database on S3,
+opening the hosted graph and reading its `Paths` table is 10 requests, 2.9 MB
+and about 2.4 s per session. A 3 Mb or 1 Mb window costs the same as a
+chromosome; a 100 kb window at AMY1 draws its 1,463 alignments from the graph
+in 53 requests and 6.9 MB. With both files on local disk the chromosome
+takes 97 ms, cold.
 [`tools/overview/`](https://github.com/GMOD/gbz-base-js/blob/main/tools/overview)
 in gbz-base-js draws these views to a PNG from Node or in a page.
 
@@ -158,14 +158,17 @@ with `--forward-only`, because about half the contigs in a graph like HPRC's run
 reversed relative to the reference, and identifying a walk on one of those needs
 reverse-orientation samples.
 
-For the 10 GB HPRC v2.1 GRCh38 database, the format 2 index with 131,072 bp
-anchors on GRCh38 and CHM13 is 8.1 GB. It holds 178.5 million samples, 5.4
-million stray rows, and node lists of 3.2 MB for 363,000 bins; the stray rows
-and node lists add 0.2 GB. Building it from the GBZ takes 30-33 minutes on 20
-threads and peaks at 19.9 GB of memory. On the chr22 part of the same graph,
-1,131 paths and 3.1 million nodes, the same options give a 98 MB index in
-format 2 and a 58 MB one in format 3, which drops the rowid table's second copy
-of every sample key.
+For the 10 GB HPRC v2.1 GRCh38 database, the index with 131,072 bp anchors on
+GRCh38 and CHM13 holds 178.5 million samples, 45,557 anchors, 5.4 million stray
+rows in 364,000 bin parts, and an overview of 464 haplotypes at 5 levels for
+both reference samples. In format 3 it is 5.1 GB, of which the overview is
+0.47 GB; the format 2 index of the same graph was 8.1 GB without an overview,
+since a rowid table kept a second copy of every sample key. Building it from
+the GBZ with the database takes 35 minutes on 22 threads of a machine with
+125 GB of memory: 7 minutes to walk the paths, 12 for the stray rows, 9 for
+the overview and 6 to write. On the chr22 part of the same graph, 1,131 paths
+and 3.1 million nodes, the same options give 98 MB in format 2 and 66 MB in
+format 3.
 
 ## Using the haplotype index
 
