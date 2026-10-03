@@ -104,7 +104,8 @@ impl RefMap {
                 let (len, next) = source.step(current);
                 let slot = &mut slots[support::node_id(current.node)];
                 if *slot == 0 {
-                    *slot = ((i as u64 + 1) << 33) | ((current.node as u64 & 1) << 32) | offset as u64;
+                    *slot =
+                        ((i as u64 + 1) << 33) | ((current.node as u64 & 1) << 32) | offset as u64;
                 }
                 offset += len;
                 pos = next;
@@ -124,7 +125,11 @@ impl RefMap {
             return None;
         }
         let reversed = (slot >> 32) & 1 != (node_handle as u64 & 1);
-        Some(((slot >> 33) as usize - 1, (slot & 0xffff_ffff) as usize, reversed))
+        Some((
+            (slot >> 33) as usize - 1,
+            (slot & 0xffff_ffff) as usize,
+            reversed,
+        ))
     }
 }
 
@@ -390,7 +395,9 @@ pub fn overview(
                     add_span(&grid, &mut acc.covered, reference, from, to);
                 }
                 for &(reference, from, to) in &marks.variant {
-                    for b in grid.at(reference, from)..=grid.at(reference, to.saturating_sub(1).max(from)) {
+                    for b in grid.at(reference, from)
+                        ..=grid.at(reference, to.saturating_sub(1).max(from))
+                    {
                         acc.marks[b] = acc.marks[b].saturating_add(1);
                     }
                 }
@@ -429,7 +436,8 @@ pub fn overview(
                 let mut summaries: Vec<[usize; 7]> = vec![[0; 7]; level.counts[reference]];
                 for b in 0..level.counts[reference] {
                     let fine_from = grid.first[reference] + b * factor;
-                    let fine_to = (fine_from + factor).min(grid.first[reference] + grid.count(reference));
+                    let fine_to =
+                        (fine_from + factor).min(grid.first[reference] + grid.count(reference));
                     let width: usize = (fine_from..fine_to).map(|f| grid.width(reference, f)).sum();
                     let summary = &mut summaries[b];
                     for f in fine_from..fine_to {
@@ -438,11 +446,14 @@ pub fn overview(
                         summary[6] = summary[6].max(sites[f].max_bp as usize);
                     }
                     for (row, acc) in accumulators.iter().enumerate() {
-                        let covered: usize = (fine_from..fine_to).map(|f| acc.covered[f] as usize).sum();
-                        let marks: usize = (fine_from..fine_to).map(|f| acc.marks[f] as usize).sum();
+                        let covered: usize =
+                            (fine_from..fine_to).map(|f| acc.covered[f] as usize).sum();
+                        let marks: usize =
+                            (fine_from..fine_to).map(|f| acc.marks[f] as usize).sum();
                         let class = class_of(covered, width, marks);
                         summary[class as usize] += 1;
-                        classes[b * bytes_per_bin + row / 2] |= cell(class, marks) << (4 * (row % 2));
+                        classes[b * bytes_per_bin + row / 2] |=
+                            cell(class, marks) << (4 * (row % 2));
                     }
                 }
                 for chunk in 0..level.counts[reference].div_ceil(options.chunk) {

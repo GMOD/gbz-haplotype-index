@@ -955,8 +955,7 @@ fn write(
             }
         }
         let mut write_bin = transaction.prepare("INSERT INTO HaplotypeBins(reference_handle, bin, part, nodes, strays) VALUES (?1, ?2, ?3, ?4, ?5)").unwrap();
-        let mut by_bin: BTreeMap<(u32, u32), (Vec<&Vec<u8>>, Vec<strays::Stray>)> =
-            BTreeMap::new();
+        let mut by_bin: BTreeMap<(u32, u32), (Vec<&Vec<u8>>, Vec<strays::Stray>)> = BTreeMap::new();
         for b in strays.bins.iter() {
             by_bin
                 .entry((b.reference_handle, b.bin))
@@ -991,7 +990,9 @@ fn write(
             }
         }
         let mut write_row = transaction
-            .prepare("INSERT INTO HaplotypeOverviewRows(row, sample, haplotype) VALUES (?1, ?2, ?3)")
+            .prepare(
+                "INSERT INTO HaplotypeOverviewRows(row, sample, haplotype) VALUES (?1, ?2, ?3)",
+            )
             .unwrap();
         for (row, name) in overview.rows.iter().enumerate() {
             write_row
@@ -1108,13 +1109,31 @@ fn write(
         }
         if !overview.samples.is_empty() {
             let overview_tags = [
-                ("haplotype_index_overview_format", overview::FORMAT.to_string()),
-                ("haplotype_index_overview_bin", args.overview_bin.to_string()),
-                ("haplotype_index_overview_chunk", args.overview_chunk.to_string()),
+                (
+                    "haplotype_index_overview_format",
+                    overview::FORMAT.to_string(),
+                ),
+                (
+                    "haplotype_index_overview_bin",
+                    args.overview_bin.to_string(),
+                ),
+                (
+                    "haplotype_index_overview_chunk",
+                    args.overview_chunk.to_string(),
+                ),
                 ("haplotype_index_overview_sv", args.overview_sv.to_string()),
-                ("haplotype_index_overview_levels", overview.levels.to_string()),
-                ("haplotype_index_overview_rows", overview.rows.len().to_string()),
-                ("haplotype_index_overview_samples", overview.samples.join(",")),
+                (
+                    "haplotype_index_overview_levels",
+                    overview.levels.to_string(),
+                ),
+                (
+                    "haplotype_index_overview_rows",
+                    overview.rows.len().to_string(),
+                ),
+                (
+                    "haplotype_index_overview_samples",
+                    overview.samples.join(","),
+                ),
             ];
             for (key, value) in overview_tags.iter() {
                 write_tag.execute(params![key, value]).unwrap();
@@ -1596,7 +1615,16 @@ mod tests {
         for ((reference, level, chunk), bytes) in &decoded {
             assert_eq!(bytes.len() % bytes_per_bin, 0);
             let bins = bytes.len() / bytes_per_bin;
-            assert!(bins <= 4 && (bins == 4 || *chunk as usize == decoded.keys().filter(|k| k.0 == *reference && k.1 == *level).count() - 1));
+            assert!(
+                bins <= 4
+                    && (bins == 4
+                        || *chunk as usize
+                            == decoded
+                                .keys()
+                                .filter(|k| k.0 == *reference && k.1 == *level)
+                                .count()
+                                - 1)
+            );
             for b in 0..bins {
                 for row in 0..rows {
                     let byte = bytes[b * bytes_per_bin + row / 2];
@@ -1624,7 +1652,10 @@ mod tests {
                 .or_insert_with(Vec::<u8>::new)
                 .extend(&part.bytes);
         }
-        assert_eq!(bins_decoded.keys().collect::<Vec<_>>(), decoded.keys().collect::<Vec<_>>());
+        assert_eq!(
+            bins_decoded.keys().collect::<Vec<_>>(),
+            decoded.keys().collect::<Vec<_>>()
+        );
         for (key, bytes) in &bins_decoded {
             let values = crate::encode::tests::varints(std::slice::from_ref(bytes));
             assert_eq!(values.len() % 7, 0);
