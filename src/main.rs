@@ -6,6 +6,7 @@ use rusqlite::{params, Connection, OpenFlags};
 use simple_sds::serialize;
 
 mod encode;
+mod overview;
 mod strays;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -50,6 +51,15 @@ tables hold for a context of at most --stray-context. Give graph.gbz.db, which
 holds the top-level snarls, for the rows to cover a query that fills snarls.
 --stray-context 0 writes neither table.
 
+Overview: for each reference sample with anchors, tables HaplotypeOverviewRows,
+HaplotypeOverviewBins and HaplotypeOverviewClasses summarize every haplotype
+against each reference path in bins of --overview-bin bp and coarser levels a
+factor of four apart: per bin and haplotype one of absent, reference, partial
+and variant, and per bin the counts of each class and of the excursions from
+the reference, where an excursion of --overview-sv bp or more is a variant.
+A browser draws a whole chromosome from these in a few reads.
+--overview-bin 0 writes none.
+
 With --from-db the walk reads node records from the database itself, so the
 GBZ is not needed. Walking a GBZ uses --threads (default: all cores).
 
@@ -65,6 +75,10 @@ Options:
   --stray-bin BP       bp of a reference path per node list (default 16384)
   --stray-bound BP     bp a walk runs past an anchor visit (default 32768)
   --stray-gap BP       bp between strays that starts a new row (default 1024)
+  --overview-bin BP    bp of a reference path per overview bin (default 4096)
+  --overview-chunk N   overview bins per stored row (default 256)
+  --overview-sv BP     the excursion length that marks a bin variant
+                       (default 50)
   --forward-only       sample only the forward orientation of each path
   --page-size BYTES    SQLite page size of index.db, a power of two from 512
                        to 65536 (default 65536: one page per 64 KiB block of
@@ -90,6 +104,9 @@ struct Args {
     stray_gap: usize,
     forward_only: bool,
     page_size: usize,
+    overview_bin: usize,
+    overview_chunk: usize,
+    overview_sv: usize,
     threads: usize,
 }
 
@@ -101,6 +118,15 @@ impl Args {
             bound: self.stray_bound,
             gap: self.stray_gap,
             part_bytes: encode::part_limit(self.page_size) / 2,
+        }
+    }
+
+    fn overview_options(&self) -> overview::Options {
+        overview::Options {
+            bin: self.overview_bin,
+            chunk: self.overview_chunk,
+            sv_bp: self.overview_sv,
+            part_bytes: encode::part_limit(self.page_size),
         }
     }
 }
@@ -117,6 +143,9 @@ fn parse_args() -> Args {
     let mut stray_gap = 1024;
     let mut forward_only = false;
     let mut page_size: usize = 65536;
+    let mut overview_bin = 4096;
+    let mut overview_chunk = 256;
+    let mut overview_sv = 50;
     let mut from_db = false;
     let mut overwrite = false;
     let mut threads = thread::available_parallelism()
@@ -152,7 +181,8 @@ fn parse_args() -> Args {
                     process::exit(1);
                 }));
             }
-            "--stray-context" | "--stray-bin" | "--stray-bound" | "--stray-gap" => {
+            "--stray-context" | "--stray-bin" | "--stray-bound" | "--stray-gap"
+            | "--overview-bin" | "--overview-chunk" | "--overview-sv" => {
                 let value = iter.next().unwrap_or_default();
                 let parsed = value.parse().unwrap_or_else(|_| {
                     eprintln!("Invalid {}: {}", arg, value);
@@ -162,7 +192,10 @@ fn parse_args() -> Args {
                     "--stray-context" => stray_context = parsed,
                     "--stray-bin" => stray_bin = parsed,
                     "--stray-bound" => stray_bound = parsed,
-                    _ => stray_gap = parsed,
+                    "--stray-gap" => stray_gap = parsed,
+                    "--overview-bin" => overview_bin = parsed,
+                    "--overview-chunk" => overview_chunk = parsed,
+                    _ => overview_sv = parsed,
                 }
             }
             "--threads" => {
@@ -201,7 +234,15 @@ fn parse_args() -> Args {
         positional.len() == 2 || positional.len() == 3
     };
     let reference_interval = reference_interval.unwrap_or(interval);
-    if !valid || interval == 0 || reference_interval == 0 || threads == 0 || stray_bin == 0 {
+    if !valid
+        || interval == 0
+        || reference_interval == 0
+        || threads == 0
+        || stray_bin == 0
+        || overview_chunk == 0
+        || overview_sv == 0
+        || overview_bin > u16::MAX as usize
+    {
         eprint!("{}", USAGE);
         process::exit(1);
     }
@@ -227,6 +268,9 @@ fn parse_args() -> Args {
         stray_gap,
         forward_only,
         page_size,
+        overview_bin,
+        overview_chunk,
+        overview_sv,
         threads,
     }
 }
@@ -293,6 +337,7 @@ trait PathSource {
     fn max_node_id(&self) -> usize;
     fn successors(&self, handle: usize) -> Vec<usize>;
     fn sample_of(&self, path_handle: usize) -> String;
+    fn haplotype_of(&self, path_handle: usize) -> usize;
     fn path_count(&self) -> usize;
 }
 
@@ -357,6 +402,13 @@ impl PathSource for GbzSource<'_> {
     fn sample_of(&self, path_handle: usize) -> String {
         let metadata = self.graph.metadata().unwrap();
         metadata.sample_name(metadata.path(path_handle).unwrap().sample())
+    }
+
+    fn haplotype_of(&self, path_handle: usize) -> usize {
+        self.graph
+            .metadata()
+            .and_then(|m| m.path(path_handle))
+            .map_or(0, |name| name.phase())
     }
 
     fn path_count(&self) -> usize {
@@ -443,6 +495,14 @@ impl PathSource for DbSource<'_> {
             .unwrap()
             .map(|path| path.name.sample)
             .unwrap_or_default()
+    }
+
+    fn haplotype_of(&self, path_handle: usize) -> usize {
+        self.interface
+            .borrow_mut()
+            .get_path(path_handle)
+            .unwrap()
+            .map_or(0, |path| path.name.haplotype)
     }
 
     fn path_count(&self) -> usize {
@@ -761,6 +821,27 @@ CREATE TABLE HaplotypeBins (
     nodes BLOB NOT NULL,
     strays BLOB NOT NULL,
     PRIMARY KEY (reference_handle, bin, part)
+) STRICT, WITHOUT ROWID;
+CREATE TABLE HaplotypeOverviewRows (
+    row INTEGER PRIMARY KEY,
+    sample TEXT NOT NULL,
+    haplotype INTEGER NOT NULL
+) STRICT;
+CREATE TABLE HaplotypeOverviewBins (
+    reference_handle INTEGER NOT NULL,
+    level INTEGER NOT NULL,
+    chunk INTEGER NOT NULL,
+    part INTEGER NOT NULL,
+    bins BLOB NOT NULL,
+    PRIMARY KEY (reference_handle, level, chunk, part)
+) STRICT, WITHOUT ROWID;
+CREATE TABLE HaplotypeOverviewClasses (
+    reference_handle INTEGER NOT NULL,
+    level INTEGER NOT NULL,
+    chunk INTEGER NOT NULL,
+    part INTEGER NOT NULL,
+    classes BLOB NOT NULL,
+    PRIMARY KEY (reference_handle, level, chunk, part)
 ) STRICT, WITHOUT ROWID;";
 
 // The layout of the tables, which the reader tests for. Format 3 stores the
@@ -794,6 +875,7 @@ fn write(
     nodes: usize,
     anchors: &Anchors,
     strays: &strays::Output,
+    overview: &overview::Output,
     args: &Args,
 ) {
     let started = Instant::now();
@@ -904,6 +986,36 @@ fn write(
                 bin_bytes += nodes.len() + strays.len();
             }
         }
+        let mut write_row = transaction
+            .prepare("INSERT INTO HaplotypeOverviewRows(row, sample, haplotype) VALUES (?1, ?2, ?3)")
+            .unwrap();
+        for (row, name) in overview.rows.iter().enumerate() {
+            write_row
+                .execute(params![row as i64, name.sample, name.haplotype as i64])
+                .unwrap();
+        }
+        for (table, column, parts) in [
+            ("HaplotypeOverviewBins", "bins", &overview.bins),
+            ("HaplotypeOverviewClasses", "classes", &overview.classes),
+        ] {
+            let mut write_part = transaction
+                .prepare(&format!(
+                    "INSERT INTO {}(reference_handle, level, chunk, part, {}) VALUES (?1, ?2, ?3, ?4, ?5)",
+                    table, column
+                ))
+                .unwrap();
+            for p in parts.iter() {
+                write_part
+                    .execute(params![
+                        p.reference_handle as i64,
+                        p.level as i64,
+                        p.chunk as i64,
+                        p.part as i64,
+                        p.bytes
+                    ])
+                    .unwrap();
+            }
+        }
         let mut write_tag = transaction
             .prepare("INSERT INTO Tags(key, value) VALUES (?1, ?2)")
             .unwrap();
@@ -988,6 +1100,20 @@ fn write(
                 write_tag.execute(params![key, value]).unwrap();
             }
         }
+        if !overview.samples.is_empty() {
+            let overview_tags = [
+                ("haplotype_index_overview_format", overview::FORMAT.to_string()),
+                ("haplotype_index_overview_bin", args.overview_bin.to_string()),
+                ("haplotype_index_overview_chunk", args.overview_chunk.to_string()),
+                ("haplotype_index_overview_sv", args.overview_sv.to_string()),
+                ("haplotype_index_overview_levels", overview.levels.to_string()),
+                ("haplotype_index_overview_rows", overview.rows.len().to_string()),
+                ("haplotype_index_overview_samples", overview.samples.join(",")),
+            ];
+            for (key, value) in overview_tags.iter() {
+                write_tag.execute(params![key, value]).unwrap();
+            }
+        }
     }
     transaction.commit().unwrap();
     if let Err((_, e)) = connection.close() {
@@ -999,13 +1125,21 @@ fn write(
         process::exit(1);
     });
     eprintln!(
-        "Wrote {} samples, {} anchors in {} parts, {} stray rows and {} bin parts ({} bytes) for {} paths to {} in {:.0} s",
+        "Wrote {} samples, {} anchors in {} parts, {} stray rows and {} bin parts ({} bytes), an overview of {} haplotypes in {} parts ({} bytes) for {} paths to {} in {:.0} s",
         samples.len(),
         anchors.rows.len(),
         anchor_parts,
         strays.rows.len(),
         bin_parts,
         bin_bytes,
+        overview.rows.len(),
+        overview.bins.len() + overview.classes.len(),
+        overview
+            .bins
+            .iter()
+            .chain(overview.classes.iter())
+            .map(|p| p.bytes.len())
+            .sum::<usize>(),
         paths,
         target,
         started.elapsed().as_secs_f64()
@@ -1056,7 +1190,16 @@ fn chain_links(db: &str) -> Vec<(usize, usize)> {
     links.map(|link| link.unwrap()).collect()
 }
 
-fn walk_db(db: &str, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>, Anchors, strays::Output) {
+fn walk_db(
+    db: &str,
+    args: &Args,
+) -> (
+    Vec<Sample>,
+    Vec<(usize, usize)>,
+    Anchors,
+    strays::Output,
+    overview::Output,
+) {
     let paths = count_from_db(db, "paths");
     let max_node_id = max_node_id_from_db(db);
     let database = GBZBase::open(db).unwrap_or_else(|e| {
@@ -1098,7 +1241,12 @@ fn walk_db(db: &str, args: &Args) -> (Vec<Sample>, Vec<(usize, usize)>, Anchors,
     } else {
         strays::Output::empty()
     };
-    (samples, lengths, anchors, strays)
+    let overview = if args.anchor_spacing > 0 {
+        overview::overview(&strays::Serial(&source), &anchors, args.overview_options())
+    } else {
+        overview::Output::empty()
+    };
+    (samples, lengths, anchors, strays, overview)
 }
 
 fn main() {
@@ -1107,7 +1255,7 @@ fn main() {
         eprintln!("{} exists; pass --overwrite to replace it", args.output);
         process::exit(1);
     }
-    let (samples, lengths, paths, nodes, anchors, strays) = match &args.gbz {
+    let (samples, lengths, paths, nodes, anchors, strays, overview) = match &args.gbz {
         Some(gbz) => {
             let started = Instant::now();
             let graph: GBZ = serialize::load_from(gbz).unwrap_or_else(|e| {
@@ -1166,14 +1314,26 @@ fn main() {
             } else {
                 strays::Output::empty()
             };
-            (samples, lengths, paths, nodes, anchors, strays)
+            let overview = if args.anchor_spacing > 0 {
+                overview::overview(
+                    &strays::Threads {
+                        source: &source,
+                        threads: args.threads,
+                    },
+                    &anchors,
+                    args.overview_options(),
+                )
+            } else {
+                overview::Output::empty()
+            };
+            (samples, lengths, paths, nodes, anchors, strays, overview)
         }
         None => {
             let db = args.db.as_ref().unwrap();
             let paths = count_from_db(db, "paths");
             let nodes = count_from_db(db, "nodes");
-            let (samples, lengths, anchors, strays) = walk_db(db, &args);
-            (samples, lengths, paths, nodes, anchors, strays)
+            let (samples, lengths, anchors, strays, overview) = walk_db(db, &args);
+            (samples, lengths, paths, nodes, anchors, strays, overview)
         }
     };
     write(
@@ -1184,6 +1344,7 @@ fn main() {
         nodes,
         &anchors,
         &strays,
+        &overview,
         &args,
     );
 }
@@ -1215,6 +1376,9 @@ mod tests {
             stray_gap: 1024,
             forward_only: false,
             page_size: 4096,
+            overview_bin: 100,
+            overview_chunk: 4,
+            overview_sv: 50,
             threads: 1,
         }
     }
@@ -1252,7 +1416,7 @@ mod tests {
     #[test]
     fn every_reference_path_gets_its_first_node_and_the_most_visited_node_nearest_each_multiple() {
         let spacing = 300;
-        let (_, _, anchors, _) = walk_db(&split_contig(), &args(200, spacing));
+        let (_, _, anchors, _, _) = walk_db(&split_contig(), &args(200, spacing));
         assert_eq!(anchors.reference_paths.len(), 2);
         let checked = with_source(|source| {
             let mut checked = 0;
@@ -1318,7 +1482,7 @@ mod tests {
 
     #[test]
     fn every_visit_through_an_anchor_node_is_sampled_in_both_orientations() {
-        let (samples, lengths, anchors, _) = walk_db(&split_contig(), &args(200, 300));
+        let (samples, lengths, anchors, _, _) = walk_db(&split_contig(), &args(200, 300));
         assert_eq!(lengths.len(), 6);
         let mut rows_by_handle = std::collections::BTreeMap::new();
         for sample in samples.iter() {
@@ -1362,8 +1526,8 @@ mod tests {
     fn an_anchor_sample_keeps_the_anchors_of_that_samples_paths() {
         let mut only = args(200, 300);
         only.anchor_sample = Some("GRCh38".to_string());
-        let (_, _, anchors, _) = walk_db(&split_contig(), &only);
-        let (_, _, all, _) = walk_db(&split_contig(), &args(200, 300));
+        let (_, _, anchors, _, _) = walk_db(&split_contig(), &only);
+        let (_, _, all, _, _) = walk_db(&split_contig(), &args(200, 300));
         assert_eq!(anchors.reference_paths.len(), 2);
         assert_eq!(anchors.rows.len(), all.rows.len());
     }
@@ -1372,8 +1536,8 @@ mod tests {
     fn a_reference_interval_samples_only_the_reference_paths_more_densely() {
         let mut dense = args(200, 0);
         dense.reference_interval = 20;
-        let (with, _, anchors, _) = walk_db(&split_contig(), &dense);
-        let (without, _, _, _) = walk_db(&split_contig(), &args(200, 0));
+        let (with, _, anchors, _, _) = walk_db(&split_contig(), &dense);
+        let (without, _, _, _, _) = walk_db(&split_contig(), &args(200, 0));
         let per_path = |samples: &[Sample], handle: usize| -> Vec<u32> {
             let mut offsets: Vec<u32> = samples
                 .iter()
@@ -1402,8 +1566,66 @@ mod tests {
     }
 
     #[test]
+    fn the_overview_classes_every_haplotype_in_every_bin_at_every_level() {
+        let (_, _, _, _, overview) = walk_db(&split_contig(), &args(200, 300));
+        let rows = overview.rows.len();
+        assert!(rows >= 3);
+        assert!(overview.rows.windows(2).all(|w| w[0] < w[1]));
+        assert!(overview.levels >= 2);
+        let bytes_per_bin = rows.div_ceil(2);
+        let mut decoded = std::collections::BTreeMap::new();
+        for part in &overview.classes {
+            decoded
+                .entry((part.reference_handle, part.level, part.chunk))
+                .or_insert_with(Vec::<u8>::new)
+                .extend(&part.bytes);
+        }
+        let mut cells = 0;
+        for ((reference, level, chunk), bytes) in &decoded {
+            assert_eq!(bytes.len() % bytes_per_bin, 0);
+            let bins = bytes.len() / bytes_per_bin;
+            assert!(bins <= 4 && (bins == 4 || *chunk as usize == decoded.keys().filter(|k| k.0 == *reference && k.1 == *level).count() - 1));
+            for b in 0..bins {
+                for row in 0..rows {
+                    let byte = bytes[b * bytes_per_bin + row / 2];
+                    let value = (byte >> (4 * (row % 2))) & 0xf;
+                    let class = value & 3;
+                    assert!(class <= overview::VARIANT);
+                    assert!(class == overview::VARIANT || value >> 2 == 0);
+                    let name = &overview.rows[row];
+                    let own = with_source(|source| {
+                        source.sample_of(*reference as usize) == name.sample
+                            && source.haplotype_of(*reference as usize) == name.haplotype
+                    });
+                    if own {
+                        assert_eq!(class, overview::REFERENCE);
+                    }
+                    cells += 1;
+                }
+            }
+        }
+        assert!(cells > 0);
+        let mut bins_decoded = std::collections::BTreeMap::new();
+        for part in &overview.bins {
+            bins_decoded
+                .entry((part.reference_handle, part.level, part.chunk))
+                .or_insert_with(Vec::<u8>::new)
+                .extend(&part.bytes);
+        }
+        assert_eq!(bins_decoded.keys().collect::<Vec<_>>(), decoded.keys().collect::<Vec<_>>());
+        for (key, bytes) in &bins_decoded {
+            let values = crate::encode::tests::varints(std::slice::from_ref(bytes));
+            assert_eq!(values.len() % 7, 0);
+            assert_eq!(values.len() / 7, decoded[key].len() / bytes_per_bin);
+            for summary in values.chunks(7) {
+                assert_eq!(summary[..4].iter().sum::<usize>(), rows);
+            }
+        }
+    }
+
+    #[test]
     fn a_zero_spacing_marks_nothing_and_leaves_the_per_path_samples_alone() {
-        let (with, _, anchors, _) = walk_db(&split_contig(), &args(200, 0));
+        let (with, _, anchors, _, _) = walk_db(&split_contig(), &args(200, 0));
         assert_eq!(anchors.nodes.len(), 0);
         assert!(anchors.rows.is_empty());
         assert_eq!(with.len(), 42);

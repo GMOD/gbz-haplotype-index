@@ -535,7 +535,7 @@ impl Sample {
     }
 }
 
-fn reference_samples(source: &dyn PathSource, anchors: &Anchors) -> Vec<(String, BTreeSet<usize>)> {
+pub fn reference_samples(source: &dyn PathSource, anchors: &Anchors) -> Vec<(String, BTreeSet<usize>)> {
     let mut by_sample: HashMap<String, BTreeSet<usize>> = HashMap::new();
     for &handle in &anchors.reference_paths {
         by_sample
