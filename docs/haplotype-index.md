@@ -64,13 +64,45 @@ Table `HaplotypeSamples` holds the samples in the b-tree of their key, the node
 and the rank of the visit. `HaplotypeAnchors` names each anchor node and holds,
 as one blob per anchor, the samples of every visit through it. `HaplotypeBins`
 holds each bin's node list beside its stray rows, and `HaplotypeLengths` the
-length of each path. The tag `haplotype_index_format` names this layout, 3. The
-library also reads format 2, which gbz-haplotype-index 0.2 wrote: the samples
-in a rowid table, the anchors without their visits, and the node lists and
-stray rows in two tables. A keep-route query read that layout in about twenty
-single-block requests, most of them b-tree descents four levels deep; format 3
-answers the same query in two short range scans
-([measured below](#requests-per-query)).
+length of each path. The tables with blobs keep SQLite's rowid and a key index,
+their rows in key order, because an index b-tree copies whole rows into its
+interior pages and a blob would leave each page a few cells. The tag
+`haplotype_index_format` names this layout, 3. The library also reads format 2,
+which gbz-haplotype-index 0.2 wrote: the samples in a rowid table, the anchors
+without their visits, and the node lists and stray rows in two tables. A
+keep-route query read that layout in about twenty single-block requests, most
+of them b-tree descents four levels deep; format 3 answers the same query in
+two short range scans ([measured below](#requests-per-query)).
+
+### The overview
+
+A view of megabases, or of a whole chromosome, is too much graph to read: 3 Mb
+of chr22 costs about 70 requests and 17 MB, and whole chr6 timed out after
+4,200. For those views the index carries an overview, which the library reads
+with `haplotypeOverview` and `gbz-base-query --overview` in about 7 requests
+whatever the window. For each reference sample with anchors, the indexer walks
+every path once more. A path's visits to the sample's reference nodes place it
+on a reference path; the stretch between two consecutive visits is an
+excursion, which replaces the reference bp between the two nodes with the
+path's own bp. The path covers the reference from the first node to the second,
+and an excursion of `--overview-sv` bp or more (50) in either measure marks the
+bins it spans as variant, as does a visit against the reference's orientation,
+a step backwards or to another reference path, or a jump of over 10 Mb.
+
+The paths of one sample and phase make one haplotype, and per bin of
+`--overview-bin` bp (4,096) it gets one of four classes: absent when none of
+its paths covers the bin, variant when one marked it, partial when they cover
+less than nine tenths of it, and reference-like otherwise. Coarser levels, a
+factor of four apart, sum the coverage and the marks of their bins, and a
+variant cell carries a bucket of the marks (1, 2 to 3, 4 to 15, 16 or more), so
+haplotypes still differ at a level where nearly every bin holds some structural
+difference. `HaplotypeOverviewClasses` holds the cells, four bits each, in rows
+of `--overview-chunk` bins (256) per reference path and level;
+`HaplotypeOverviewBins` counts the haplotypes of each class and the excursions
+per bin; `HaplotypeOverviewRows` names the haplotypes. On chr22 the overview
+of 464 haplotypes takes 15 s per reference sample and 6.8 MB. Whole chr22 at
+16 kb bins is 3,102 bins and 1.4 MB in 11 index requests, 4 of them once per
+session.
 
 The word "sample" also means an individual, such as `HG002` in a path name. The
 rest of this page uses it for the index entry, the sense of the GBWT's own
@@ -496,22 +528,22 @@ format 3, with its parallel reads and read-ahead. The sampled route returns all
 | window    | route   | before: requests (graph + index) | before: MB | after: requests (graph + index) | after: MB |
 | --------: | ------- | -------------------------------: | ---------: | ------------------------------: | ---------: |
 |       300 | sampled |                       14 (8 + 6) |        0.9 |                      13 (8 + 5) |        0.9 |
-|       300 | keep1   |                     28 (10 + 18) |        2.7 |                     21 (10 + 11) |        2.2 |
+|       300 | keep1   |                     28 (10 + 18) |        2.7 |                     23 (10 + 13) |        2.4 |
 |    10,000 | sampled |                       13 (8 + 5) |        0.9 |                      13 (8 + 5) |        0.9 |
-|    10,000 | keep1   |                     28 (11 + 17) |        2.3 |                     22 (11 + 11) |        2.0 |
+|    10,000 | keep1   |                     28 (11 + 17) |        2.3 |                     23 (11 + 12) |        2.0 |
 |   100,000 | sampled |                       17 (8 + 9) |        1.4 |                      13 (8 + 5) |        1.2 |
-|   100,000 | keep1   |                     31 (11 + 20) |        2.7 |                     22 (11 + 11) |        2.2 |
+|   100,000 | keep1   |                     31 (11 + 20) |        2.7 |                     23 (11 + 12) |        2.3 |
 |   300,000 | sampled |                      29 (11 + 18) |        2.9 |                     16 (11 + 5) |        2.6 |
-|   300,000 | keep1   |                      45 (14 + 31) |        4.5 |                     25 (14 + 11) |        3.6 |
+|   300,000 | keep1   |                      45 (14 + 31) |        4.5 |                     27 (14 + 13) |        3.7 |
 | 1,000,000 | sampled |                      56 (12 + 44) |        7.1 |                     17 (12 + 5) |        6.0 |
-| 1,000,000 | keep1   |                      70 (15 + 55) |        8.6 |                     27 (15 + 12) |        7.2 |
+| 1,000,000 | keep1   |                      70 (15 + 55) |        8.6 |                     28 (15 + 13) |        7.3 |
 | 3,000,000 | sampled |                   307 (181 + 126) |       20.1 |                     70 (63 + 7) |       16.6 |
-| 3,000,000 | keep1   |                   324 (188 + 136) |       21.2 |                     79 (66 + 13) |       17.6 |
+| 3,000,000 | keep1   |                   324 (188 + 136) |       21.2 |                     81 (66 + 15) |       17.7 |
 
-Of a keep1 query's 11 index requests, 2 open the file, 1 reads the path's
-length, 2 each read the bins' rows and the anchors' rows, in parallel, and 3
-read the samples on the window's nodes for the check after the walks, which
-now run while the walks do. The graph side is unchanged below 1 Mb: the
+Of a keep1 query's 12 or 13 index requests, 2 open the file, 1 reads the path's
+length, 2 or 3 each read the bins' rows and the anchors' rows (a key index,
+then a run of the table), in parallel, and 3 read the samples on the window's
+nodes for the check after the walks, which now run while the walks do. The graph side is unchanged below 1 Mb: the
 reference walk's node records come in one or two prefetched reads, and the
 rest are nodes the context expansion and the identification reach outside
 them. Past 1 Mb the pager used to refuse a prefetch over half its cache and the

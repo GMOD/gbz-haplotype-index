@@ -17,7 +17,9 @@ names the comparisons on both sides that the rule depends on.
 The tables' layout is a separate contract, the `haplotype_index_format` tag
 (3). `src/encode.rs` holds the blob encodings; the reader decodes them in its
 `db.ts`. A change to a table or a blob bumps the tag, and the reader refuses a
-format it does not know.
+format it does not know. The overview tables of `src/overview.rs` have their
+own tag, `haplotype_index_overview_format` (1), and the reader returns no
+overview for a tag it does not know.
 
 Nothing here checks that the two sides agree. The fuzzer in gbz-base-js does:
 build this crate, then run it from a gbz-base-js checkout with the binary as the
