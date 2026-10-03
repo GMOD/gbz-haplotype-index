@@ -67,12 +67,13 @@ holds each bin's node list beside its stray rows, and `HaplotypeLengths` the
 length of each path. The tables with blobs keep SQLite's rowid and a key index,
 their rows in key order, because an index b-tree copies whole rows into its
 interior pages and a blob would leave each page a few cells. The tag
-`haplotype_index_format` names this layout, 3. The library also reads format 2,
-which gbz-haplotype-index 0.2 wrote: the samples in a rowid table, the anchors
-without their visits, and the node lists and stray rows in two tables. A
-keep-route query read that layout in about twenty single-block requests, most
-of them b-tree descents four levels deep; format 3 answers the same query in
-two short range scans ([measured below](#requests-per-query)).
+`haplotype_index_format` names this layout, 3, the one the library reads; it
+refuses an index without the tag at open. Format 2, which gbz-haplotype-index
+0.2 wrote, kept the samples in a rowid table, the anchors without their visits,
+and the node lists and stray rows in two tables, and a keep-route query read it
+in about twenty single-block requests, most of them b-tree descents four
+levels deep; format 3 answers the same query in two short range scans
+([measured below](#requests-per-query)).
 
 ### The overview
 
@@ -523,6 +524,17 @@ filling a snarl, and the two routes never differed.
 
 After the last change to either route, at `aafb2bc`, we ran the comparisons in
 the table and `gbz-truth` again, and every count came out the same.
+
+On the format 3 index of the whole graph, built with the database on a
+24-core machine, every fifth window of the first row (300 windows: 120 random,
+60 segmental duplication, 60 contigs without an anchor, 20 anchors a path
+visits twice, 20 CHM13, 10 chromosome ends and 10 acrocentric) ran with
+`context` 100 and no snarls and with `context` 1000 and contained snarls,
+keeping one haplotype, one sample and eight haplotypes: 1,800 queries, all on
+the keep route, and the GFA and the alignment records matched the sampled
+route in every one. The keep route's median took 150 ms against 275 ms for
+the sampled route on the random windows, and 159 against 1,909 ms on the
+contigs without an anchor.
 
 With both files on local disk and their pages in memory, the median query took
 102 ms on the keep route and 169 ms on the sampled route over the random

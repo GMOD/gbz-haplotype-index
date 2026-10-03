@@ -16,11 +16,9 @@ Give `graph.gbz.db` with the GBZ: the tool reads the top-level snarls from it,
 which a query that keeps a few haplotypes and fills snarls needs. The index also
 carries an [overview](docs/haplotype-index.md#the-overview) of every haplotype
 in bins along each reference path, for views of megabases or a whole
-chromosome. The index is written in format 3, which @gmod/gbz-base reads from
-version 6.1. Earlier versions read only the format 2 index that
-gbz-haplotype-index 0.2 wrote, and fail on a format 3 file with "SQLite table
-b-tree contains an index page", so keep a format 2 file hosted while clients
-on 6.0 remain.
+chromosome. The index is written in format 3, the one format @gmod/gbz-base
+reads; an index that an earlier gbz-haplotype-index wrote is refused at open
+and must be rebuilt.
 
 ## Docs
 
