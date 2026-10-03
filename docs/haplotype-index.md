@@ -250,7 +250,8 @@ on both sides,
 [`src/chosenPaths.ts`](https://github.com/GMOD/gbz-base-js/blob/main/src/chosenPaths.ts)
 in gbz-base-js and [`src/strays.rs`](../src/strays.rs), so a change to either
 can be checked against it. The fuzzer tests the same claim, and the proof names
-the comparisons it rests on.
+the comparisons it rests on. [proof.md](proof.md) states the same argument as
+definitions, lemmas and a theorem, without the code identifiers.
 
 **Notation.** R is the query's reference path, `spacing` the anchor spacing,
 `bin` the bin length and `bound` the walks' reach (`--stray-bound`). The window

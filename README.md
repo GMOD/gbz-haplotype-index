@@ -25,5 +25,7 @@ which a query that keeps a few haplotypes and fills snarls needs.
   - [How a query identifies walks](docs/haplotype-index.md#how-a-query-identifies-walks)
   - [Proof that the keep route finds every piece](docs/haplotype-index.md#proof-that-the-keep-route-finds-every-piece)
   - [Measured on HPRC v2.1](docs/haplotype-index.md#measured-on-hprc-v21)
+- [Formal proof that the keep route finds every piece](docs/proof.md):
+  the same argument as definitions, lemmas and a theorem
 - [DEVELOPING.md](DEVELOPING.md): tests, and keeping the indexer and the reader
   in agreement
