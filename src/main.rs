@@ -813,7 +813,7 @@ CREATE TABLE HaplotypeAnchors (
     path_offset INTEGER NOT NULL,
     visits BLOB NOT NULL,
     PRIMARY KEY (path_handle, anchor_offset, part)
-) STRICT, WITHOUT ROWID;
+) STRICT;
 CREATE TABLE HaplotypeBins (
     reference_handle INTEGER NOT NULL,
     bin INTEGER NOT NULL,
@@ -821,7 +821,7 @@ CREATE TABLE HaplotypeBins (
     nodes BLOB NOT NULL,
     strays BLOB NOT NULL,
     PRIMARY KEY (reference_handle, bin, part)
-) STRICT, WITHOUT ROWID;
+) STRICT;
 CREATE TABLE HaplotypeOverviewRows (
     row INTEGER PRIMARY KEY,
     sample TEXT NOT NULL,
@@ -834,7 +834,7 @@ CREATE TABLE HaplotypeOverviewBins (
     part INTEGER NOT NULL,
     bins BLOB NOT NULL,
     PRIMARY KEY (reference_handle, level, chunk, part)
-) STRICT, WITHOUT ROWID;
+) STRICT;
 CREATE TABLE HaplotypeOverviewClasses (
     reference_handle INTEGER NOT NULL,
     level INTEGER NOT NULL,
@@ -842,11 +842,15 @@ CREATE TABLE HaplotypeOverviewClasses (
     part INTEGER NOT NULL,
     classes BLOB NOT NULL,
     PRIMARY KEY (reference_handle, level, chunk, part)
-) STRICT, WITHOUT ROWID;";
+) STRICT;";
 
 // The layout of the tables, which the reader tests for. Format 3 stores the
 // samples in their key b-tree, each anchor with the visits through its node
 // and each bin with its stray rows, so a window's rows come in a few reads.
+// The tables with blobs keep SQLite's rowid and a key index, since an index
+// b-tree copies whole rows into its interior pages and a blob would leave
+// each page a few cells; their rows go in key order, so a key range is one
+// run of the table.
 const FORMAT: &str = "3";
 
 // The forward samples at both handles of an anchor's node, from the samples
@@ -1004,7 +1008,9 @@ fn write(
                     table, column
                 ))
                 .unwrap();
-            for p in parts.iter() {
+            let mut ordered: Vec<&overview::Part> = parts.iter().collect();
+            ordered.sort_unstable_by_key(|p| (p.reference_handle, p.level, p.chunk, p.part));
+            for p in ordered {
                 write_part
                     .execute(params![
                         p.reference_handle as i64,

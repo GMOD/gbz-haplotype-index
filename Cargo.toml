@@ -1,6 +1,6 @@
 [package]
 name = "gbz-haplotype-index"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Writes a companion haplotype index that names every walk in a gbz-base pangenome database"
 license = "MIT"
