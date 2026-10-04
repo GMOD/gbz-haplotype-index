@@ -6,6 +6,8 @@ use rusqlite::{params, Connection, OpenFlags};
 use simple_sds::serialize;
 
 mod encode;
+#[cfg(test)]
+mod oracle;
 mod overview;
 mod strays;
 

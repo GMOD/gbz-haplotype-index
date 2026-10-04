@@ -21,9 +21,12 @@ format it does not know. The overview tables of `src/overview.rs` have their
 own tag, `haplotype_index_overview_format` (1), and the reader returns no
 overview for a tag it does not know.
 
-Nothing here checks that the two sides agree. The fuzzer in gbz-base-js does:
-build this crate, then run it from a gbz-base-js checkout with the binary as the
-indexer.
+`src/oracle.rs` restates the keep route's walk plan from `chosenPaths.ts` and
+checks, over every window of whole bins of each fixture, that every visit to a
+window's node lies on a planned walk or in a stray row; a change to the walk
+rule has to change it too. It runs this side only. The fuzzer in gbz-base-js runs the
+reader against the index: build this crate, then run it from a gbz-base-js
+checkout with the binary as the indexer.
 
 ```bash
 cargo build --release
@@ -37,7 +40,6 @@ fixture indexes and reports the ones that change. The fixtures use
 `--page-size 4096` to stay small; micb-kir3dl1 keeps the default 64 KiB pages,
 and a format 2 index of it stays beside it to test that the reader refuses one.
 
-The test fixture `test/data/split-contig.gbz.db` is a copy of the one in
-gbz-base-js.
+The test fixtures `test/data/*.gbz.db` are copies of those in gbz-base-js.
 
 `docs/CLAUDE.md` holds the writing rules for the pages in `docs/`.
