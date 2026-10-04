@@ -28,7 +28,7 @@
 // into the snarl. A path that lies inside the snarl from end to end has a row
 // naming the snarl, listed in the bins of the snarl's lower boundary node.
 
-use super::{Anchors, PathSource};
+use super::{fit_u32, Anchors, PathSource};
 use crate::encode::encode_ids;
 use gbz::{support, Orientation, Pos, ENDMARKER};
 
@@ -98,7 +98,7 @@ impl Output {
 }
 
 fn pack(reference_handle: usize, bin: usize) -> u64 {
-    ((reference_handle as u64 + 1) << 32) | bin as u64
+    ((reference_handle as u64 + 1) << 32) | fit_u32("bin", bin) as u64
 }
 
 fn unpack(locus: u64) -> (usize, usize) {
@@ -240,7 +240,10 @@ impl Snarls {
             if a == b || !seen.insert(key) {
                 continue;
             }
-            bounds.push((a.min(b) as u32, a.max(b) as u32));
+            bounds.push((
+                fit_u32("snarl_low", a.min(b)),
+                fit_u32("snarl_high", a.max(b)),
+            ));
             let region = bounds.len() as u32;
             let mut members = Vec::new();
             let mut stack = vec![handle, support::flip_node(next)];
@@ -521,12 +524,12 @@ impl Sample {
                     reference_handle: reference as u32,
                     bin: bin as u32,
                     path_handle: path_handle as u32,
-                    path_start: start.offset as u32,
+                    path_start: fit_u32("path_start", start.offset),
                     snarl_low: 0,
                     snarl_high: 0,
-                    path_end: visits[strays[next - 1].1].offset as u32,
-                    node_handle: start.pos.node as u32,
-                    node_offset: start.pos.offset as u32,
+                    path_end: fit_u32("path_end", visits[strays[next - 1].1].offset),
+                    node_handle: fit_u32("node_handle", start.pos.node),
+                    node_offset: fit_u32("node_offset", start.pos.offset),
                 });
                 first = next;
             }
@@ -647,8 +650,9 @@ pub fn strays(
         runner.run(bins.len(), &|source, i| {
             let (handle, bin, ids) = &bins[i];
             let nodes = sample.ball(source, ids);
+            let locus = pack(*handle, *bin);
             for &id in &nodes {
-                sample.loci.note(id, pack(*handle, *bin));
+                sample.loci.note(id, locus);
             }
             let parts: Vec<BinNodes> = encode_ids(&nodes, sample.options.part_bytes)
                 .into_iter()
@@ -689,9 +693,9 @@ pub fn strays(
                     path_start: 0,
                     snarl_low: low,
                     snarl_high: high,
-                    path_end: last as u32,
-                    node_handle: start.node as u32,
-                    node_offset: start.offset as u32,
+                    path_end: fit_u32("path_end", last),
+                    node_handle: fit_u32("node_handle", start.node),
+                    node_offset: fit_u32("node_offset", start.offset),
                 });
                 snarl_rows += 1;
             }

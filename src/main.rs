@@ -292,6 +292,13 @@ struct Anchor {
     path_offset: u32,
 }
 
+fn fit_u32<T: TryInto<u32> + Copy + std::fmt::Display>(field: &str, value: T) -> u32 {
+    value.try_into().unwrap_or_else(|_| {
+        eprintln!("{} {} does not fit the index's 32-bit column", field, value);
+        process::exit(1);
+    })
+}
+
 struct NodeSet {
     words: Vec<u64>,
 }
@@ -537,7 +544,7 @@ fn mark_anchors(
             anchors.push(Anchor {
                 path_handle: path_handle as u32,
                 anchor_offset: 0,
-                node_handle: current.node as u32,
+                node_handle: fit_u32("node_handle", current.node),
                 path_offset: 0,
             });
         }
@@ -556,9 +563,9 @@ fn mark_anchors(
                 if let Some((_, chosen, chosen_offset)) = best.take() {
                     anchors.push(Anchor {
                         path_handle: path_handle as u32,
-                        anchor_offset: target as u32,
-                        node_handle: chosen.node as u32,
-                        path_offset: chosen_offset as u32,
+                        anchor_offset: fit_u32("anchor_offset", target),
+                        node_handle: fit_u32("node_handle", chosen.node),
+                        path_offset: fit_u32("path_offset", chosen_offset),
                     });
                 }
                 k += 1;
@@ -609,11 +616,11 @@ fn walk(
         let (node_len, next) = source.step(current);
         if offset >= next_sample || anchors.contains(support::node_id(current.node)) {
             samples.push(Sample {
-                node_handle: current.node as u32,
-                node_offset: current.offset as u32,
+                node_handle: fit_u32("node_handle", current.node),
+                node_offset: fit_u32("node_offset", current.offset),
                 path_handle: path_handle as u32,
                 orientation: orientation as u8,
-                path_offset: offset as u32,
+                path_offset: fit_u32("path_offset", offset),
             });
             next_sample = offset + interval;
             last = None;
@@ -625,18 +632,21 @@ fn walk(
     }
     if let Some((end, end_offset)) = last {
         samples.push(Sample {
-            node_handle: end.node as u32,
-            node_offset: end.offset as u32,
+            node_handle: fit_u32("node_handle", end.node),
+            node_offset: fit_u32("node_offset", end.offset),
             path_handle: path_handle as u32,
             orientation: orientation as u8,
-            path_offset: end_offset as u32,
+            path_offset: fit_u32("path_offset", end_offset),
         });
     }
     let length = offset;
     if orientation == Orientation::Reverse {
         for sample in samples[first..].iter_mut() {
             let node_len = source.node_len(sample.node_handle as usize);
-            sample.path_offset = (length - sample.path_offset as usize - node_len) as u32;
+            sample.path_offset = fit_u32(
+                "path_offset",
+                length - sample.path_offset as usize - node_len,
+            );
         }
     }
     length

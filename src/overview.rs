@@ -23,7 +23,7 @@
 // where nearly every bin holds one. Per bin the tables also count the
 // haplotypes of each class and the excursions that start in it.
 
-use super::{Anchors, PathSource};
+use super::{fit_u32, Anchors, PathSource};
 use crate::encode::push_varint;
 use crate::strays::{reference_samples, Runner};
 use gbz::{support, Orientation, ENDMARKER};
@@ -104,8 +104,9 @@ impl RefMap {
                 let (len, next) = source.step(current);
                 let slot = &mut slots[support::node_id(current.node)];
                 if *slot == 0 {
-                    *slot =
-                        ((i as u64 + 1) << 33) | ((current.node as u64 & 1) << 32) | offset as u64;
+                    *slot = ((i as u64 + 1) << 33)
+                        | ((current.node as u64 & 1) << 32)
+                        | fit_u32("reference offset", offset) as u64;
                 }
                 offset += len;
                 pos = next;
@@ -469,7 +470,7 @@ pub fn overview(
                         out.bins.push(Part {
                             reference_handle: handle as u32,
                             level: level_index as u32,
-                            chunk: chunk as u32,
+                            chunk: fit_u32("chunk", chunk),
                             part: part as u32,
                             bytes,
                         });
@@ -479,7 +480,7 @@ pub fn overview(
                         out.classes.push(Part {
                             reference_handle: handle as u32,
                             level: level_index as u32,
-                            chunk: chunk as u32,
+                            chunk: fit_u32("chunk", chunk),
                             part: part as u32,
                             bytes,
                         });
