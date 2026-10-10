@@ -171,6 +171,33 @@ the overview and 6 to write. On the chr22 part of the same graph, 1,131 paths
 and 3.1 million nodes, the same options give 98 MB in format 2 and 66 MB in
 format 3.
 
+### Building HPRC release 2.1's index
+
+HPRC publishes the GBZ and its gbz-base database but no haplotype names, so the
+index is the one file to build. The two downloads are 5.5 GB and 10 GB, and
+`curl -C -` resumes a partial one:
+
+```bash
+base=https://s3-us-west-2.amazonaws.com/human-pangenomics/pangenomes/freeze/release2/minigraph-cactus/v2.1/hprc-v2.1-mc-grch38
+for f in hprc-v2.1-mc-grch38.gbz hprc-v2.1-mc-grch38.gbz.db; do
+  curl -fL -C - -o $f $base/$f
+done
+
+gbz-haplotype-index --interval 16384 --anchor-spacing 131072 \
+  hprc-v2.1-mc-grch38.gbz hprc-v2.1-mc-grch38.gbz.db \
+  hprc-v2.1-mc-grch38.haplotype-index.db
+```
+
+- `--interval 16384` records 159 million positions over the graph's 53,150
+  paths. At 65,536 the index is a quarter the size, and a query walks up to four
+  times further to identify a haplotype.
+- `--anchor-spacing 131072` puts 45,557 anchors along the 292 GRCh38 and CHM13
+  paths, where the default of 32,768 would put four times as many.
+- The stray and overview options keep their defaults: 4,096 bp overview bins at
+  5 levels.
+- On a 16-thread Intel Mac (macOS 15), the walk aborts inside libmalloc's nano
+  zone; `MallocNanoZone=0` or `--threads 8` gets past it.
+
 ## Using the haplotype index
 
 ```ts
