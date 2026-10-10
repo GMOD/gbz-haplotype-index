@@ -35,3 +35,19 @@ and must be rebuilt.
   the same argument as definitions, lemmas and a theorem
 - [DEVELOPING.md](DEVELOPING.md): tests, and keeping the indexer and the reader
   in agreement
+
+## See also
+
+- [@gmod/gbz-base](https://github.com/GMOD/gbz-base-js) - range-request reader
+  for `.gbz.db` databases
+- [jbrowse-plugin-graphgenomeviewer](https://github.com/GMOD/jbrowse-plugin-graphgenomeviewer) -
+  JBrowse 2 plugin that browses these graphs by locus
+- [BandageJS](https://github.com/cmdcolin/BandageJS) - standalone page for GFA
+  and gbz-base graphs
+- [gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix) - indexes a GFA by genome
+  coordinate
+
+Tutorials on [jbrowse.org](https://jbrowse.org/jb2/docs/tutorials/)
+
+- [Hosting your own graph](https://jbrowse.org/jb2/docs/tutorials/pangenome_prepare_graph/)
+- [HPRC part 1: graph alleles and haplotypes](https://jbrowse.org/jb2/docs/tutorials/pangenome_hprc/)
