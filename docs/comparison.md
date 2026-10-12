@@ -26,10 +26,13 @@ The walk files have advantages:
 
 gbz-base and this index have advantages too:
 
-- **Repeats:** the walk files give each node one coordinate, so a pass over a
-  collapsed repeat copy lands under the reference's first copy. gbz-base follows
-  each walk through the GBWT, and the two cuts differ in places such as the
-  22q11 repeats
+- **Segmental duplications:** where a haplotype steps onto the reference nodes
+  of a distant paralog and back, the walk files put the steps after the jump
+  under the paralog's chunk, so a window at the haplotype's own locus shows it
+  in more pieces and leaves out some of its inserted nodes. gbz-base reaches
+  those nodes by graph distance from the window. On HPRC v2.1 chr22 the walk
+  files place under 0.1% of steps this way, in at most 74 of 1,130 paths,
+  nearly all in the 22q11 low-copy repeats
 - **Growth with haplotypes:** a per-haplotype walk store grows linearly with the
   haplotypes, an estimated 6 to 8 GB genome-wide at 464 and 50 to 70 GB at
   4,000. The GBWT in a `.gbz.db` grows sublinearly, because haplotypes share

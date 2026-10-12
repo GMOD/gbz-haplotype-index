@@ -77,8 +77,9 @@ gbz-base-query https://host/graph.gbz.db \
 [gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix) `--walks` writes named,
 Tabix-indexed BED files of each haplotype's walk. On 60 chr22 windows of HPRC
 v2.1 it returned the same walks as gbz-base with this index in 56. It needs
-fewer requests and takes any GFA. gbz-base follows walks through repeats
-exactly and grows sublinearly with haplotypes.
+fewer requests and takes any GFA. gbz-base grows sublinearly with haplotypes
+and keeps a walk whole where it jumps to a paralog, which on chr22 affects
+under 0.1% of steps.
 
 See the [full comparison](docs/comparison.md).
 
