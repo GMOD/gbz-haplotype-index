@@ -275,5 +275,8 @@ fn every_visit_to_a_window_node_lies_on_a_planned_walk_or_in_a_stray_row() {
             name, setting.spacing, setting.bin, setting.bound, setting.context, checked, by_row_only, snarl_rows
         );
         assert!(checked > 0, "{}", name);
+        if *name == "far-pass" {
+            assert!(snarl_rows > 0, "far-pass lost its snarl rows");
+        }
     }
 }
