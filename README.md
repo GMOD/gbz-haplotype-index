@@ -34,8 +34,6 @@ gbz-haplotype-index --interval 16384 --from-db graph.gbz.db graph.haplotype-inde
   index in 35 minutes on 22 threads; its chr22 alone gives 66 MB. The
   [recipe](docs/haplotype-index.md#building-hprc-release-21s-index) lists the
   downloads and options
-- The tool writes format 3, the one format @gmod/gbz-base reads. Rebuild an
-  index that gbz-haplotype-index 0.2 or earlier wrote
 
 ## Read it
 
