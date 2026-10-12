@@ -1227,6 +1227,32 @@ fn chain_links(db: &str) -> Vec<(usize, usize)> {
     links.map(|link| link.unwrap()).collect()
 }
 
+fn strays_and_overview(
+    runner: &dyn strays::Runner,
+    anchors: &Anchors,
+    lengths: &[(usize, usize)],
+    args: &Args,
+    snarls: impl FnOnce() -> strays::Snarls,
+) -> (strays::Output, overview::Output) {
+    let strays = if args.stray_context > 0 && args.anchor_spacing > 0 {
+        strays::strays(
+            runner,
+            anchors,
+            args.anchor_spacing,
+            args.stray_options(),
+            &snarls(),
+        )
+    } else {
+        strays::Output::empty()
+    };
+    let overview = if args.anchor_spacing > 0 {
+        overview::overview(runner, anchors, lengths, args.overview_options())
+    } else {
+        overview::Output::empty()
+    };
+    (strays, overview)
+}
+
 fn walk_db(
     db: &str,
     args: &Args,
@@ -1265,29 +1291,10 @@ fn walk_db(
         reference_paths: reference_paths.into_iter().collect(),
     };
     let (samples, lengths) = walk_paths(&source, 0..paths, args, &anchors, "database walk");
-    let strays = if args.stray_context > 0 && args.anchor_spacing > 0 {
-        let snarls =
-            strays::Snarls::find(&source, &chain_links(db), count_from_db(db, "chain_links"));
-        strays::strays(
-            &strays::Serial(&source),
-            &anchors,
-            args.anchor_spacing,
-            args.stray_options(),
-            &snarls,
-        )
-    } else {
-        strays::Output::empty()
-    };
-    let overview = if args.anchor_spacing > 0 {
-        overview::overview(
-            &strays::Serial(&source),
-            &anchors,
-            &lengths,
-            args.overview_options(),
-        )
-    } else {
-        overview::Output::empty()
-    };
+    let (strays, overview) =
+        strays_and_overview(&strays::Serial(&source), &anchors, &lengths, args, || {
+            strays::Snarls::find(&source, &chain_links(db), count_from_db(db, "chain_links"))
+        });
     (samples, lengths, anchors, strays, overview)
 }
 
@@ -1331,8 +1338,15 @@ fn main() {
             let anchors = anchors_gbz(&graph, &args);
             let (samples, lengths) = walk_gbz(&graph, paths, &args, &anchors);
             let source = GbzSource { graph: &graph };
-            let strays = if args.stray_context > 0 && args.anchor_spacing > 0 {
-                let snarls = match &args.db {
+            let (strays, overview) = strays_and_overview(
+                &strays::Threads {
+                    source: &source,
+                    threads: args.threads,
+                },
+                &anchors,
+                &lengths,
+                &args,
+                || match &args.db {
                     Some(db) => strays::Snarls::find(
                         &source,
                         &chain_links(db),
@@ -1342,33 +1356,8 @@ fn main() {
                         eprintln!("No graph.gbz.db given: the stray rows leave snarls out, and a query that fills one identifies every walk");
                         strays::Snarls::none()
                     }
-                };
-                strays::strays(
-                    &strays::Threads {
-                        source: &source,
-                        threads: args.threads,
-                    },
-                    &anchors,
-                    args.anchor_spacing,
-                    args.stray_options(),
-                    &snarls,
-                )
-            } else {
-                strays::Output::empty()
-            };
-            let overview = if args.anchor_spacing > 0 {
-                overview::overview(
-                    &strays::Threads {
-                        source: &source,
-                        threads: args.threads,
-                    },
-                    &anchors,
-                    &lengths,
-                    args.overview_options(),
-                )
-            } else {
-                overview::Output::empty()
-            };
+                },
+            );
             (samples, lengths, paths, nodes, anchors, strays, overview)
         }
         None => {
