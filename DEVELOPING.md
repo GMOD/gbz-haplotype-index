@@ -11,7 +11,7 @@ there state the same rule. A change to that rule on either side must bump the
 `haplotype_index_stray_format` tag that `src/main.rs` writes and the reader
 tests for; a reader that meets a format it does not know identifies every walk
 instead of trusting the rows. The
-[proof](docs/haplotype-index.md#proof-that-the-keep-route-finds-every-piece)
+[proof](docs/proof.md)
 names the comparisons on both sides that the rule depends on.
 
 The tables' layout is a separate contract, the `haplotype_index_format` tag

@@ -75,52 +75,6 @@ in about twenty single-block requests, most of them b-tree descents four
 levels deep; format 3 answers the same query in two short range scans
 ([measured below](#requests-per-query)).
 
-### The overview
-
-A view of megabases, or of a whole chromosome, is too much graph to read: 3 Mb
-of chr22 costs about 70 requests and 17 MB, and whole chr6 timed out after
-4,200. For those views the index carries an overview, which the library reads
-with `haplotypeOverview` and `gbz-base-query --overview` in about 7 requests
-whatever the window. For each reference sample with anchors, the indexer walks
-every path once more. A path's visits to the sample's reference nodes place it
-on a reference path; the stretch between two consecutive visits is an
-excursion, which replaces the reference bp between the two nodes with the
-path's own bp. The path covers the reference from the first node to the second,
-and an excursion of `--overview-sv` bp or more (50) in either measure marks the
-bins it spans as variant. A contig reads the reference in either direction, so
-two visits in the same orientation that step on in that direction are an
-alignment; a turn, a step back, a jump to another reference path or one of
-over 10 Mb marks both nodes' bins as variant instead.
-
-The paths of one sample and phase make one haplotype, and per bin of
-`--overview-bin` bp (4,096) it gets one of four classes: absent when none of
-its paths covers the bin, variant when one marked it, partial when they cover
-less than nine tenths of it, and reference-like otherwise. Coarser levels, a
-factor of four apart, sum the coverage and the marks of their bins, and a
-variant cell carries a bucket of the marks (1, 2 to 3, 4 to 15, 16 or more), so
-haplotypes still differ at a level where nearly every bin holds some structural
-difference. `HaplotypeOverviewClasses` holds the cells, four bits each, in rows
-of `--overview-chunk` bins (256) per reference path and level;
-`HaplotypeOverviewBins` counts the haplotypes of each class and the excursions
-per bin; `HaplotypeOverviewRows` names the haplotypes. On chr22 the overview
-of 464 haplotypes takes 15 s per reference sample and 6.8 MB. Whole chr22 at
-16 kb bins is 3,102 bins and 1.4 MB in 11 index requests, 4 of them once per
-session. The build walks every path once more per reference sample and holds
-8 bytes per node plus 3 bytes per haplotype and bin, about 2 GB more on HPRC
-v2.1 than the figures above.
-
-On the whole HPRC v2.1 GRCh38 graph, 139.5 million nodes and 464 haplotypes,
-the index above serves whole chr1 (249 Mb) from 3,799 bins of 65.5 kb in 11
-index requests and 1.6 MB once the session is open, and whole CHM13 chr1 the
-same way. With the index on a local server and the graph database on S3,
-opening the hosted graph and reading its `Paths` table is 10 requests, 2.9 MB
-and about 2.4 s per session. A 3 Mb or 1 Mb window costs the same as a
-chromosome; a 100 kb window at AMY1 draws its 1,463 alignments from the graph
-in 53 requests and 6.9 MB. With both files on local disk the chromosome
-takes 97 ms, cold.
-[`tools/overview/`](https://github.com/GMOD/gbz-base-js/blob/main/tools/overview)
-in gbz-base-js draws these views to a PNG from Node or in a page.
-
 The word "sample" also means an individual, such as `HG002` in a path name. The
 rest of this page uses it for the index entry, the sense of the GBWT's own
 document array samples.
@@ -311,7 +265,7 @@ span meets the bin, and a visit within 32 kb along the path of an anchor visit
 that lies up to 32 kb outside the bin. Every other visit goes into a stray row
 of that bin. Step 2 checks that the subgraph consists of nodes of the bins the
 window touches, so steps 4 and 5 pass every visit of a chosen haplotype to those
-nodes ([proof](#proof-that-the-keep-route-finds-every-piece)).
+nodes ([proof](proof.md)).
 
 A snarl that the query fills can add nodes that no bin lists. A path that passes
 one of those nodes enters the snarl through one of its two boundary nodes, which
@@ -334,170 +288,53 @@ The query identifies every walk when one of these holds, and
 - a sample in step 6 lies outside every piece;
 - a twin in step 7 stays out of reach.
 
-### Proof that the keep route finds every piece
+## The overview
 
-When the keep route returns without falling back, it has recorded every piece
-that each chosen path leaves in the subgraph. The proof below follows the code
-on both sides,
-[`src/chosenPaths.ts`](https://github.com/GMOD/gbz-base-js/blob/main/src/chosenPaths.ts)
-in gbz-base-js and [`src/strays.rs`](../src/strays.rs), so a change to either
-can be checked against it. The fuzzer tests the same claim, and the proof names
-the comparisons it rests on. [proof.md](proof.md) states the same argument as
-definitions, lemmas and a theorem, without the code identifiers.
+A view of megabases, or of a whole chromosome, is too much graph to read: 3 Mb
+of chr22 costs about 70 requests and 17 MB, and whole chr6 timed out after
+4,200. For those views the index carries an overview, which the library reads
+with `haplotypeOverview` and `gbz-base-query --overview` in about 7 requests
+whatever the window. For each reference sample with anchors, the indexer walks
+every path once more. A path's visits to the sample's reference nodes place it
+on a reference path; the stretch between two consecutive visits is an
+excursion, which replaces the reference bp between the two nodes with the
+path's own bp. The path covers the reference from the first node to the second,
+and an excursion of `--overview-sv` bp or more (50) in either measure marks the
+bins it spans as variant. A contig reads the reference in either direction, so
+two visits in the same orientation that step on in that direction are an
+alignment; a turn, a step back, a jump to another reference path or one of
+over 10 Mb marks both nodes' bins as variant instead.
 
-**Notation.** R is the query's reference path, `spacing` the anchor spacing,
-`bin` the bin length and `bound` the walks' reach (`--stray-bound`). The window
-touches bins F to L of R, which span `[lo, hi)` with `lo = F × bin` and
-`hi = (L + 1) × bin`. Bin b spans `[b_lo, b_hi)`, and `lo ≤ b_lo < b_hi ≤ hi`
-for every b from F to L. S is the subgraph and I the nodes that snarl fills
-added to it. P is a chosen path, and a visit is one step of P's forward walk,
-placed at the offset along P where its node starts. `a(k)` is the offset along R
-of the anchor of multiple k.
+The paths of one sample and phase make one haplotype, and per bin of
+`--overview-bin` bp (4,096) it gets one of four classes: absent when none of
+its paths covers the bin, variant when one marked it, partial when they cover
+less than nine tenths of it, and reference-like otherwise. Coarser levels, a
+factor of four apart, sum the coverage and the marks of their bins, and a
+variant cell carries a bucket of the marks (1, 2 to 3, 4 to 15, 16 or more), so
+haplotypes still differ at a level where nearly every bin holds some structural
+difference. `HaplotypeOverviewClasses` holds the cells, four bits each, in rows
+of `--overview-chunk` bins (256) per reference path and level;
+`HaplotypeOverviewBins` counts the haplotypes of each class and the excursions
+per bin; `HaplotypeOverviewRows` names the haplotypes. On chr22 the overview
+of 464 haplotypes takes 15 s per reference sample and 6.8 MB. Whole chr22 at
+16 kb bins is 3,102 bins and 1.4 MB in 11 index requests, 4 of them once per
+session. The build walks every path once more per reference sample and holds
+8 bytes per node plus 3 bytes per haplotype and bin, about 2 GB more on HPRC
+v2.1 than the figures above.
 
-**Assumptions.** Each holds by construction in the indexer or the reader. The
-library checks parts of assumptions 3 and 4 and none of the others:
+On the whole HPRC v2.1 GRCh38 graph, 139.5 million nodes and 464 haplotypes,
+the index above serves whole chr1 (249 Mb) from 3,799 bins of 65.5 kb in 11
+index requests and 1.6 MB once the session is open, and whole CHM13 chr1 the
+same way. With the index on a local server and the graph database on S3,
+opening the hosted graph and reading its `Paths` table is 10 requests, 2.9 MB
+and about 2.4 s per session. A 3 Mb or 1 Mb window costs the same as a
+chromosome; a 100 kb window at AMY1 draws its 1,463 alignments from the graph
+in 53 requests and 6.9 MB. With both files on local disk the chromosome
+takes 97 ms, cold.
+[`tools/overview/`](https://github.com/GMOD/gbz-base-js/blob/main/tools/overview)
+in gbz-base-js draws these views to a PNG from Node or in a page.
 
-1. The multiples with an anchor on R run from 0 without a gap, and
-   `a(k) ≤ a(k + 1)`, with equality only when one node anchors both multiples
-   (`mark_anchors` in `main.rs`). Every node is at least 1 bp long.
-2. The index has a sample at every visit of every path to an anchor node (`walk`
-   in `main.rs`), so the anchor rows list every such visit. Each forward sample,
-   anchor and stray row records a visit's GBWT position and the offset along the
-   path where its node starts, the quantity a walk's `left` tracks.
-3. The indexer (`Snarls::find`) and the query (`fillBetween`) fill a snarl with
-   the same search from the same chain link: from both boundary nodes inward,
-   along edges on both sides of each node, never entering the two boundary
-   nodes. In a GBZ the graph's edges are the GBWT's, so both searches follow the
-   same edges, and one of those edges joins any two consecutive visits of a
-   path. So the next visit after a visit to the filled region lies in the region
-   or at a boundary node. The query uses snarl rows only when the index's tags
-   say `modeled` and record the same number of chain links as the database, a
-   count that does not compare the links themselves.
-4. The index was built from this graph. When it opens the index, the library
-   compares the path and node counts, which would miss a different graph with
-   the same counts.
-
-**Part 1: what a walk covers.** A walk covers a range of offsets along P when
-every visit to S in that range lies in a piece the query recorded. A walk starts
-at a GBWT position with that visit's offset (assumption 2) and adds each node's
-length as it steps, so `left` stays the offset of the current visit.
-`walkForward` steps on while a node starts at or before `until`, and
-`walkBackward` steps back while the current node starts after `until`, so both
-comparisons are inclusive. On a node of S each records the maximal piece through
-that position and jumps to the piece's far end, and the visits it jumps over lie
-in that piece. So each walk steps through a contiguous stretch of P, and for P's
-anchor visits at offsets `u ≤ v`:
-
-- a section walk covers `[u − bound, v + bound]`;
-- a walk around the anchor visit at u covers `[u − bound, u + bound]`;
-- the walk of a stray row covers `[path_start, path_end]` of the row.
-
-A walk that meets an end of P stops early, and the range beyond holds no visits.
-`markWalked` records the planned range widened to what the walk reached, so
-every recorded range is covered, and the query skips a plan or a row only when
-`covered` finds its range inside a recorded range of P.
-
-**Part 2: the indexer's rule.** The indexer cuts P at its visits to the anchor
-nodes of R's sample. A section is the stretch between two consecutive cuts that
-are anchors of adjacent multiples k and k + 1 of R, where neither node anchors
-another multiple of any reference path of R's sample. For a bin b of R, the
-indexer counts a visit of the section as reached when one of these holds:
-
-- (i) `a(k) < b_hi` and `a(k + 1) ≥ b_lo`;
-- (ii) `a(k) ≥ b_hi`, `a(k) − b_hi ≤ bound`, and the visit lies within `bound`
-  along P of the visit to the anchor at `a(k)`;
-- (iii) `a(k + 1) < b_lo`, `b_lo − a(k + 1) ≤ bound`, and the visit lies within
-  `bound` along P of the visit to the anchor at `a(k + 1)`.
-
-The indexer tests a visit only against the sections it lies in, two when the
-visit is itself a cut. A visit within `bound` of an anchor visit in the
-neighbouring section therefore becomes a stray, which adds a row. The indexer
-writes every visit to a node of b that none of these reaches into a stray row of
-b, and a row runs from its first stray to its last.
-
-![For a window of one bin b: in case (i) the anchors' span meets b and the query walks the section and bound past both visits; in case (ii) a(k) lies up to bound past b and the query walks bound to each side of its visit; case (iii) mirrors it before b; every other visit to a node of b is in a stray row. Below, the query reads every anchor from the last before lo − bound to the first past hi + bound, so an anchor at exactly hi + bound brings in the one after it](img/proof-reach.svg)
-
-**Part 3: the query reads both anchors of every such section.** Each case of
-part 2 gives `a(k) ≤ hi + bound` and `a(k + 1) ≥ lo − bound`. The query reads
-every multiple from `lowest` to `highest`, moving `lowest` down while
-`a(lowest) ≥ lo − bound` or `lowest` has no anchor, and `highest` up while
-`a(highest) ≤ hi + bound`.
-
-- If `k < lowest`, then `k + 1 ≤ lowest`, so
-  `a(k + 1) ≤ a(lowest) < lo − bound`, a contradiction, or `lowest` is 0 and k
-  cannot be below it.
-- If `k + 1 > highest`, then `k ≥ highest`. Either `a(highest) > hi + bound`, so
-  `a(k) > hi + bound`, a contradiction, or `highest` has no anchor, and by
-  assumption 1 neither does `k + 1`.
-
-So the query reads both anchors. The proof needs `≥` in the first loop and `≤`
-in the second. With `<` in the second, an anchor at exactly `hi + bound` stopped
-the loop before the multiple past it, which is the omission that `4c7f8f8`
-fixed. The first loop never moves: `mark_anchors` chooses for multiple k a node
-that starts before `k × spacing`, so `a(k) < k × spacing`, and the first read
-already starts one multiple below `(lo − bound) / spacing`. The second loop
-moves when an anchor's node starts far before its multiple. Mutating the first
-loop's comparison therefore changes nothing, and no test can catch it.
-
-The query's cuts of P are its visits to the anchors it read on R, a subset of
-the indexer's cuts: R is one of the reference paths of its sample, so its anchor
-nodes are cuts for the indexer, and the query reads the samples at both
-orientations of each anchor node once and keeps the forward ones, which by
-assumption 2 are all of P's visits there. Two cuts that are consecutive for the
-indexer are therefore consecutive for the query, and a node that anchors one
-multiple for the indexer anchors one among those the query read. So the query
-sees every section of part 2 as a consecutive pair of anchor visits with
-adjacent multiples.
-
-**Part 4: every reached visit lies on a planned walk.** Take a section of part 2
-with anchor visits at u ≤ v along P.
-
-- Case (i): `a(k) < b_hi ≤ hi` and `a(k + 1) ≥ b_lo ≥ lo`, so the query plans
-  the section walk, which covers the section by part 1.
-- Case (ii): if `a(k) < hi`, then `a(k + 1) ≥ a(k) ≥ b_hi > lo` and the query
-  plans the section walk, which covers `[u − bound, v + bound]` and with it
-  every visit within `bound` of either anchor visit. Otherwise `a(k) ≥ hi` and
-  `a(k) − hi ≤ a(k) − b_hi ≤ bound`, so the query plans a walk around the visit
-  to the anchor at `a(k)`.
-- Case (iii) is case (ii) reflected: the section walk when `a(k + 1) ≥ lo`, and
-  otherwise a walk around the visit to the anchor at `a(k + 1)`.
-
-**Part 5: every visit to S lies in a recorded piece.** Let p be a visit of P to
-a node x of S.
-
-- When x is not in I, the check of step 2 of the query found x in the node list
-  of some bin b from F to L of R. The indexer tested p against b. If one of the
-  cases of part 2 reached p, part 4 gives a planned walk that covers it.
-  Otherwise p lies in a stray row of b for P, and the query reads the rows of
-  bins F to L, keeps those of chosen paths and walks each.
-- When x is in I, x lies in the region of a filled snarl with boundary nodes y
-  and z. The query fills a contained snarl only when y and z were in S before
-  any fill, so neither is in I, and the fill puts the whole region in S. By
-  assumption 3, P leaves the region only through a visit to y or z. If P has
-  such a visit next to its run through p, that visit lies in a recorded piece by
-  the case above, and p lies in the same piece, since every node between them is
-  in S. Otherwise all of P lies inside the snarl, and the indexer wrote a row
-  naming the snarl in every bin that lists the lower boundary node. The query's
-  check found that node in a bin from F to L, so the query reads the row and
-  walks all of P.
-
-![A filled snarl between boundary nodes y and z, both in the subgraph before any fill. A path that enters the region leaves it only through y or z, so its piece through the region holds a visit to y or z. A path inside the region from end to end has a row naming the snarl](img/proof-snarl.svg)
-
-Every visit of P to S therefore lies in a recorded piece, and each recorded
-piece is a maximal run of P in S, so the query has recorded every piece of P.
-
-**What the proof leaves to the checks.** The walks find each piece in P's
-forward orientation, and step 7 of the query finds the other orientation where
-`extractPaths` keeps it, or falls back. `pieceThrough` extends a piece while the
-next position is in S, so each recorded piece is a maximal run of P in S. The
-proof uses neither the `context` fallback nor any agreement between the
-indexer's search for a bin's nodes and the query's `context` search, because the
-check of step 2 establishes what it needs. That agreement keeps the check from
-failing. The sample check of step 6 never fails while the proof holds, and it
-guards against an index built for another graph or a rule changed on one side
-alone.
-
-### Measured on HPRC v2.1
+## Measured on HPRC v2.1
 
 We ran the index described under
 [Building the haplotype index](#building-the-haplotype-index) from local copies
@@ -571,7 +408,7 @@ keep route took 62-93 ms and the sampled route 19-25 ms, because the keep route
 walks each chosen haplotype from one anchor to the next, 131 kb apart in this
 index, whatever the window's length.
 
-### Requests per query
+## Requests per query
 
 Over HTTP, a query's cost is the number of range requests more than the bytes,
 since the library issues the reads of one b-tree descent one after another.
