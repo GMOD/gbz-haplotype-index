@@ -6,12 +6,12 @@ query by its haplotype.
 - **In:** a GBZ graph and the `graph.gbz.db` that `gbz-base construct` built
   from it
 - **Out:** `graph.haplotype-index.db`, a SQLite file to host beside the database
-- **Then:** [@gmod/gbz-base](https://github.com/GMOD/gbz-base-js) reads both
-  files and reports the sample, haplotype, contig and coordinate of every walk
-  in a window. With the database alone, gbz-base labels each walk other than
-  the query path `unknown#N`
-- The tool leaves `graph.gbz.db` as it is, so an index also works with a
-  database someone else hosts, such as HPRC's
+
+Then [@gmod/gbz-base](https://github.com/GMOD/gbz-base-js) reads both files and
+reports the sample, haplotype, contig and coordinate of every walk in a window.
+With the database alone, gbz-base labels each walk other than the query path
+`unknown#N`. The tool leaves `graph.gbz.db` as it is, so an index also works
+with a database someone else hosts, such as HPRC's
 
 ![graph.gbz feeds gbz-base construct, which writes graph.gbz.db, and gbz-haplotype-index, which writes graph.haplotype-index.db. @gmod/gbz-base reads both. With the database alone a query names the reference walk and prints the rest as unknown#N#chr6; with the haplotype index it names each one, such as HG002#1#chr6, with its coordinate](docs/img/overview.svg)
 
@@ -58,8 +58,8 @@ gbz-base-query https://host/graph.gbz.db \
   they visit. It walks the chosen haplotypes from anchor to anchor, so its cost
   grows with the number chosen
 - `haplotypeOverview` and `gbz-base-query --overview` read a per-bin summary of
-  every haplotype, for views of megabases or a whole chromosome in about a
-  dozen requests
+  every haplotype, for views of megabases or a whole chromosome in about a dozen
+  requests
 
 ## What the index holds
 
@@ -78,37 +78,42 @@ gbz-base-query https://host/graph.gbz.db \
 
 [gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix) `--walks` writes each
 haplotype's path through the graph, named, as bgzip-compressed, Tabix-indexed
-BED files that the JBrowse graph track reads. Compared with gbz-base and this
-index, the walk files have advantages:
+BED files that the JBrowse graph track reads. A window on those files and the
+same window on gbz-base with this index return nearly the same walks:
 
-- **Any GFA:** it reads the GFA that pggb, odgi, vg or Minigraph-Cactus write,
-  so a graph needs no GBZ
+- On 60 chr22 windows of HPRC v2.1 with eight haplotypes, both returned the same
+  haplotypes and alignments in 56. The other four lie in the 22q11 repeats and
+  the immunoglobulin lambda locus
+- At the ABCA7 VNTR, all 462 walk rows match gbz-base's to the bp
+
+The walk files have advantages:
+
+- **Fewer requests:** at the HPRC tutorial's loci, JBrowse drew a window from
+  the walk files in 5 to 7 requests and 2.4 to 7.9 s, and from gbz-base in 17 to
+  57 requests and 6.4 to 13.3 s
+- **Any GFA:** the tool reads the GFA that pggb, odgi, vg or Minigraph-Cactus
+  write, so a graph needs no GBZ
 - **Standard files:** htslib, `tabix` and any static web host handle BGZF and
   Tabix, and a reader needs no SQLite
-- **One set of files:** each row names its path as `sample#haplotype#contig`
-  and each file's header lists every haplotype, so naming a walk takes no
-  second index
+- **Names in every row:** each row names its path as `sample#haplotype#contig`
+  and the header lists every haplotype, so naming a walk takes no second index
 - **More views:** `gfa-to-tabix build` also writes a coarse tier for whole
   chromosomes, an allele inventory and the graph's bubbles
 
-They also have weaknesses:
+gbz-base and this index have advantages too:
 
-- **Approximate placement:** a node takes one coordinate, from its first visit,
-  so a haplotype that passes a collapsed repeat files that pass under the
-  reference's first copy, and the graph track draws it in more fragments. On 45 chr22 windows with
-  8 haplotypes, 41 matched gbz-base's cut
-- **Paths off the reference:** a path that visits no node of a reference has
-  no rows under it. gbz-base returns every walk through the window's nodes,
-  and its keep route has a [proof](docs/proof.md) and a fuzzer behind it
-- **One reference per set:** the tool writes three files per `--refs` sample,
-  where one `.gbz.db` serves queries on GRCh38 and CHM13 alike
-- **Size:** on HPRC v2.1 chr22 the GRCh38 and CHM13 sets total 408 MB without
-  sequences, against 196 MB for the chr22 `.gbz.db`, which holds the
-  sequences, and 66 MB for its haplotype index
-- **Less from one query:** gbz-base expands `context` bp around the reference,
-  fills snarls, and returns each walk's GBWT positions and coordinates; a
-  Tabix query returns the rows filed under the window's chunks
-- **Base-level graphs only:** `--walks` needs integer node ids and W or P
+- **Repeats:** the walk files give each node one coordinate, so a pass over a
+  collapsed repeat copy lands under the reference's first copy. gbz-base follows
+  each walk through the GBWT, and the two cuts differ in places such as the
+  22q11 repeats
+- **Growth with haplotypes:** a per-haplotype walk store grows linearly with the
+  haplotypes, an estimated 6 to 8 GB genome-wide at 464 and 50 to 70 GB at
+  4,000. The GBWT in a `.gbz.db` grows sublinearly, because haplotypes share
+  runs
+- **One file for every reference:** one `.gbz.db` serves queries on GRCh38 and
+  CHM13, where gfa-to-tabix writes a set of walk files per `--refs` sample
+- **Proof:** the keep route has a [proof](docs/proof.md) and a fuzzer behind it
+- **Input:** `--walks` needs a base-level graph with integer node ids and W or P
   lines, so a minigraph rGFA gets nodes and links but no walks
 
 ## Docs
