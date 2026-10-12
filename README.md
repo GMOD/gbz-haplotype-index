@@ -74,6 +74,43 @@ gbz-base-query https://host/graph.gbz.db \
 - **Overview:** each haplotype's class (absent, variant, partial or
   reference-like) per bin along each reference path, at several zoom levels
 
+## Alternative: gfa-to-tabix
+
+[gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix) `--walks` writes each
+haplotype's path through the graph, named, as bgzip-compressed, Tabix-indexed
+BED files that the JBrowse graph track reads. Compared with gbz-base and this
+index, the walk files have advantages:
+
+- **Any GFA:** it reads the GFA that pggb, odgi, vg or Minigraph-Cactus write,
+  so a graph needs no GBZ
+- **Standard files:** htslib, `tabix` and any static web host handle BGZF and
+  Tabix, and a reader needs no SQLite
+- **One set of files:** each row names its path as `sample#haplotype#contig`
+  and each file's header lists every haplotype, so naming a walk takes no
+  second index
+- **More views:** `gfa-to-tabix build` also writes a coarse tier for whole
+  chromosomes, an allele inventory and the graph's bubbles
+
+They also have weaknesses:
+
+- **Approximate placement:** a node takes one coordinate, from its first visit,
+  so a haplotype that passes a collapsed repeat files that pass under the
+  reference's first copy, and the graph track draws it in more fragments. On 45 chr22 windows with
+  8 haplotypes, 41 matched gbz-base's cut
+- **Paths off the reference:** a path that visits no node of a reference has
+  no rows under it. gbz-base returns every walk through the window's nodes,
+  and its keep route has a [proof](docs/proof.md) and a fuzzer behind it
+- **One reference per set:** the tool writes three files per `--refs` sample,
+  where one `.gbz.db` serves queries on GRCh38 and CHM13 alike
+- **Size:** on HPRC v2.1 chr22 the GRCh38 and CHM13 sets total 408 MB without
+  sequences, against 196 MB for the chr22 `.gbz.db`, which holds the
+  sequences, and 66 MB for its haplotype index
+- **Less from one query:** gbz-base expands `context` bp around the reference,
+  fills snarls, and returns each walk's GBWT positions and coordinates; a
+  Tabix query returns the rows filed under the window's chunks
+- **Base-level graphs only:** `--walks` needs integer node ids and W or P
+  lines, so a minigraph rGFA gets nodes and links but no walks
+
 ## Docs
 
 - [The haplotype index](docs/haplotype-index.md): the tables, every build
