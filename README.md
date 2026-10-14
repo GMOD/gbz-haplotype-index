@@ -81,13 +81,15 @@ fewer requests and takes any GFA. gbz-base grows sublinearly with haplotypes
 and keeps a walk whole where it jumps to a paralog, which on chr22 affects
 under 0.1% of steps.
 
-See the [full comparison](docs/comparison.md).
+See gfa-to-tabix's [comparison](https://github.com/GMOD/gfa-to-tabix/blob/main/docs/gbz-comparison.md)
+for sizes, requests and which to pick.
 
 ## Docs
 
 - [The haplotype index](docs/haplotype-index.md): overview of format and measurements on HPRC v2.1
 - [Proof that the keep route finds every piece](docs/proof.md): mathematical proof that this actually is a valid approach
-- [Comparison with gfa-to-tabix](docs/comparison.md): similarities and differences to our 'tabix based' gfa format
+- [Comparison with gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix/blob/main/docs/gbz-comparison.md):
+  what each format holds, sizes and requests on HPRC v2.1
 - [DEVELOPING.md](DEVELOPING.md): tests, and keeping the indexer and the reader
   in agreement
 
