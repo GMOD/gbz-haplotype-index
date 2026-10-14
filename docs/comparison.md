@@ -1,26 +1,38 @@
 # Comparison with gfa-to-tabix
 
-[gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix) `--walks` writes each
-haplotype's path through the graph, named, as bgzip-compressed, Tabix-indexed
-BED files that the JBrowse graph track reads. A window on those files and the
-same window on gbz-base with this index return nearly the same walks:
+[gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix) `--walks` writes every
+haplotype's path through the graph, named, as one bgzip-compressed,
+Tabix-indexed BED file per reference sample, which the JBrowse graph track
+reads. gfa-to-tabix's
+[comparison](https://github.com/GMOD/gfa-to-tabix/blob/main/docs/gbz-comparison.md)
+sets its files, gbz-base and this index side by side, with sizes and build
+times on HPRC v2.1.
+
+A window on the walk files and the same window on gbz-base with this index
+return nearly the same walks:
 
 - On 60 chr22 windows of HPRC v2.1 with eight haplotypes, both returned the same
   haplotypes and alignments in 56. The other four lie in the 22q11 repeats and
   the immunoglobulin lambda locus
 - At the ABCA7 VNTR, all 462 walk rows match gbz-base's to the bp
+- Both measurements read format 1 walk files, from gfa-to-tabix 0.12 and
+  earlier. The plugin draws the same graph from format 2 in 49 of 50 chr22
+  windows
 
 The walk files have advantages:
 
-- **Fewer requests:** at the HPRC tutorial's loci, JBrowse drew a window from
-  the walk files in 5 to 7 requests and 2.4 to 7.9 s, and from gbz-base in 17 to
-  57 requests and 6.4 to 13.3 s
+- **Fewer requests:** a window reads one index and one range of one file,
+  where gbz-base takes 18 to 43 round trips. At the HPRC tutorial's loci,
+  JBrowse drew a window from format 1 walk files in 5 to 7 requests and 2.4 to
+  7.9 s, and from gbz-base in 17 to 57 requests and 6.4 to 13.3 s
 - **Any GFA:** the tool reads the GFA that pggb, odgi, vg or Minigraph-Cactus
   write, so a graph needs no GBZ
 - **Standard files:** htslib, `tabix` and any static web host handle BGZF and
   Tabix, and a reader needs no SQLite
 - **Names in every row:** each row names its path as `sample#haplotype#contig`
   and the header lists every haplotype, so naming a walk takes no second index
+- **Size:** HPRC v2.1's GRCh38 and CHM13 walk files total 2.85 GB without
+  bases, against 10 GB for the database and 5.1 GB for this index
 - **More views:** `gfa-to-tabix build` also writes a coarse tier for whole
   chromosomes, an allele inventory and the graph's bubbles
 
@@ -33,12 +45,15 @@ gbz-base and this index have advantages too:
   those nodes by graph distance from the window. On HPRC v2.1 chr22 the walk
   files place under 0.1% of steps this way, in at most 74 of 1,130 paths,
   nearly all in the 22q11 low-copy repeats
-- **Growth with haplotypes:** a per-haplotype walk store grows linearly with the
-  haplotypes, an estimated 6 to 8 GB genome-wide at 464 and 50 to 70 GB at
-  4,000. The GBWT in a `.gbz.db` grows sublinearly, because haplotypes share
-  runs
+- **Growth with haplotypes:** the walk files store each distinct route off the
+  reference once, but each haplotype's choice of routes per chunk; the choices
+  grow as N^0.86 with N haplotypes, about 20 GB genome-wide at 10,000. The
+  GBWT in a `.gbz.db` grows sublinearly, because haplotypes share runs
 - **One file for every reference:** one `.gbz.db` serves queries on GRCh38 and
-  CHM13, where gfa-to-tabix writes a set of walk files per `--refs` sample
+  CHM13, where gfa-to-tabix writes a walk file per `--refs` sample
+- **Zoomed-out haplotypes:** this index's overview draws every haplotype over a
+  whole chromosome in about a dozen requests, and walk files have no coarse
+  tier
 - **Proof:** the keep route has a [proof](proof.md) and a fuzzer behind it
 - **Input:** `--walks` needs a base-level graph with integer node ids and W or P
   lines, so a minigraph rGFA gets nodes and links but no walks
