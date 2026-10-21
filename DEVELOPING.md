@@ -23,9 +23,10 @@ for a tag it does not know.
 `src/oracle.rs` restates the keep route's walk plan from `chosenPaths.ts` and
 checks, over every window of whole bins of each fixture, that every visit to a
 window's node lies on a planned walk or in a stray row; a change to the walk
-rule has to change it too. It runs this side only. The fuzzer in gbz-base-js
-runs the reader against the index: build this crate, then run it from a
-gbz-base-js checkout with the binary as the indexer.
+rule has to change it too. `cargo test` runs the oracle against this crate's
+indexer. The fuzzer in gbz-base-js runs the reader against the index. To run the
+fuzzer, build this crate, then run it from a gbz-base-js checkout with the
+binary as the indexer.
 
 ```bash
 cargo build --release
