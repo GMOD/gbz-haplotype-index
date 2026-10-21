@@ -3,15 +3,12 @@
 Names every walk in a [gbz-base](https://github.com/jltsiren/gbz-base) pangenome
 query by its haplotype.
 
-- **In:** a GBZ graph and the `graph.gbz.db` that `gbz-base construct` built
-  from it
-- **Out:** `graph.haplotype-index.db`, a SQLite file to host beside the database
-
-Then [@gmod/gbz-base](https://github.com/GMOD/gbz-base-js) reads both files and
-reports the sample, haplotype, contig and coordinate of every walk in a window.
-With the database alone, gbz-base labels each walk other than the query path
-`unknown#N`. The tool leaves `graph.gbz.db` as it is, so an index also works
-with a database someone else hosts, such as HPRC's
+[@gmod/gbz-base](https://github.com/GMOD/gbz-base-js) reads the gbz-base
+database (`graph.gbz.db`) and the haplotype index (`graph.haplotype-index.db`)
+and reports the sample, haplotype, contig and coordinate of every walk in a
+window. With `graph.gbz.db` alone, a query labels each walk other than the query
+path `unknown#N`. `gbz-haplotype-index` leaves `graph.gbz.db` unchanged, so an
+index also works with a database someone else hosts, such as HPRC's.
 
 ![graph.gbz feeds gbz-base construct, which writes graph.gbz.db, and gbz-haplotype-index, which writes graph.haplotype-index.db. @gmod/gbz-base reads both. With the database alone a query names the reference walk and prints the rest as unknown#N#chr6; with the haplotype index it names each one, such as HG002#1#chr6, with its coordinate](docs/img/overview.svg)
 
@@ -26,16 +23,19 @@ gbz-haplotype-index --interval 16384 graph.gbz graph.gbz.db graph.haplotype-inde
 gbz-haplotype-index --interval 16384 --from-db graph.gbz.db graph.haplotype-index.db
 ```
 
-- Give `graph.gbz.db` with the GBZ: the tool reads the top-level snarls from it,
-  which a query that keeps a few haplotypes and fills snarls needs
-- `--interval` trades size for speed: a query follows each walk up to that many
-  bp to find the row that names it
+- The inputs are a GBZ graph (`graph.gbz`) and the `graph.gbz.db` that
+  `gbz-base construct` built from it. Give both, because the tool reads the
+  top-level snarls from `graph.gbz.db`. Without them, a query that uses the
+  `keep` option and fills a snarl identifies every walk
+- `--interval` sets the bp between samples along each path (default 4096). A
+  larger interval gives a smaller index, and a query follows each walk further
+  to reach a sample of its path
 - The HPRC v2.1 GRCh38 graph (10 GB database, 464 haplotypes) gives a 5.1 GB
   index in 35 minutes on 22 threads; its chr22 alone gives 66 MB. The
   [recipe](docs/haplotype-index.md#building-hprc-release-21s-index) lists the
   downloads and options
 
-## Read it
+## Query with the index
 
 ```ts
 const db = await GBZBase.open(new RemoteFile(graphUrl), {
@@ -59,37 +59,25 @@ gbz-base-query https://host/graph.gbz.db \
   every haplotype, for views of megabases or a whole chromosome in about a dozen
   requests
 
-## What the index holds
+## gfa-to-tabix walk files
 
-- **Samples:** a row every `--interval` bp along each path that maps a GBWT
-  position to the path's name and coordinate, like the sampled suffix array of
-  an FM-index
-- **Anchors:** a reference node every `--anchor-spacing` bp with a row for each
-  haplotype visit, so a query that uses the `keep` option walks the chosen
-  haplotypes from one anchor to the next
-- **Bins and stray rows:** the nodes near each 16 kb of reference, and the
-  stretches of path there that a walk between anchors would miss
-- **Overview:** each haplotype's class (absent, variant, partial or
-  reference-like) per bin along each reference path, at several zoom levels
-
-## Alternative: gfa-to-tabix
-
-[gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix) `--walks` writes named,
-Tabix-indexed BED files of each haplotype's walk. On 60 chr22 windows of HPRC
-v2.1 it returned the same walks as gbz-base with this index in 56. It needs
-fewer requests and takes any GFA. gbz-base grows sublinearly with haplotypes
-and keeps a walk whole where it jumps to a paralog, which on chr22 affects
-under 0.1% of steps.
-
-See gfa-to-tabix's [comparison](https://github.com/GMOD/gfa-to-tabix/blob/main/docs/gbz-comparison.md)
-for sizes, requests and which to pick.
+[gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix) `--walks` writes each
+haplotype's walk, with its name, into one Tabix-indexed BED file per reference
+(`.walks.bed.gz` beside its `.tbi`). On 60 chr22 windows of HPRC v2.1, the walk
+files returned the same walks as gbz-base with this index in 56. Walk files need
+fewer requests, and gfa-to-tabix reads a GFA with P or W lines where gbz-base
+needs a GBZ. A gbz-base database grows sublinearly with haplotypes and keeps a
+walk whole where it jumps to a paralog, which affects under 0.1% of chr22's
+steps. gfa-to-tabix's
+[comparison](https://github.com/GMOD/gfa-to-tabix/blob/main/docs/gbz-comparison.md)
+lists sizes, requests and which to pick.
 
 ## Docs
 
-- [The haplotype index](docs/haplotype-index.md): overview of format and measurements on HPRC v2.1
-- [Proof that the keep route finds every piece](docs/proof.md): mathematical proof that this actually is a valid approach
-- [Comparison with gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix/blob/main/docs/gbz-comparison.md):
-  what each format holds, sizes and requests on HPRC v2.1
+- [The haplotype index](docs/haplotype-index.md): the tables, the two routes a
+  query takes, the overview, and measurements on HPRC v2.1
+- [Proof that the keep route finds every piece](docs/proof.md): a query that
+  uses the `keep` option returns every piece of each chosen haplotype's walk
 - [DEVELOPING.md](DEVELOPING.md): tests, and keeping the indexer and the reader
   in agreement
 
@@ -99,8 +87,8 @@ for sizes, requests and which to pick.
   for `.gbz.db` databases
 - [jbrowse-plugin-graphgenomeviewer](https://github.com/GMOD/jbrowse-plugin-graphgenomeviewer) -
   JBrowse 2 plugin that browses these graphs by locus
-- [BandageJS](https://github.com/cmdcolin/BandageJS) - standalone page for GFA
-  and gbz-base graphs
+- [BandageJS](https://github.com/cmdcolin/BandageJS) - browser viewer for GFA
+  files, gfa-to-tabix walk files and gbz-base databases
 - [gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix) - indexes a GFA by genome
   coordinate
 
