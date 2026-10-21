@@ -2,16 +2,16 @@
 
 Upstream gbz-base prints each walk other than the query path as `unknown#N`.
 [@gmod/gbz-base](https://github.com/GMOD/gbz-base-js) reports the sample,
-haplotype and contig of every walk, looked up in a haplotype index: a sidecar
-SQLite file that this repository's program,
-[`gbz-haplotype-index`](https://crates.io/crates/gbz-haplotype-index)
-(`cargo install gbz-haplotype-index`), writes beside the graph database. The
-graph database stays as `gbz-base construct` wrote it, so a haplotype index also
-works with a database someone else hosts.
+haplotype and contig of every walk by looking it up in a haplotype index
+(`graph.haplotype-index.db`), a SQLite file that
+[`gbz-haplotype-index`](https://crates.io/crates/gbz-haplotype-index) writes
+beside the graph database. `gbz-haplotype-index` leaves the graph database as
+`gbz-base construct` wrote it, so a haplotype index also works with a database
+someone else hosts.
 
-Building the haplotype index happens once per graph and covers every haplotype.
-Identifying walks happens on every query that reads the index. A caller who
-wants a subset of the haplotypes passes the `keep` option with the query
+`gbz-haplotype-index` builds the index once per graph, for every haplotype, and
+every query that reads the index identifies walks from it. To get a subset of
+the haplotypes, pass the `keep` option with the query
 ([below](#querying-a-subset-of-the-haplotypes)), with no rebuild.
 
 ## Samples and anchors
@@ -21,11 +21,11 @@ stores each path as a sequence of oriented nodes, once in each orientation. A
 position is a node record plus the rank of one visit among all visits to that
 node, so each position belongs to exactly one path in one orientation, and each
 node record maps every position to the next one along its path. A GBWT file also
-carries document array samples that map a position back to its path, but gbwt-rs
-does not read them, so the database names a path only at its two start positions
-in `Paths`, which can be a whole chromosome away from a query window. The
-haplotype index is that sampling, kept beside the database. It records the path
-at positions along the way:
+contains document array samples that map a position back to its path, but
+gbwt-rs does not read them, so the database names a path only at its two start
+positions in `Paths`, which can be a whole chromosome away from a query window.
+The haplotype index is that sampling, kept beside the database. It records the
+path at positions along the way:
 
 - A **sample** records a position, the path through it, the orientation and the
   coordinate along that path. `gbz-haplotype-index` writes one every
@@ -81,22 +81,14 @@ document array samples.
 
 ## Building the haplotype index
 
-```bash
-cargo install gbz-haplotype-index
-
-gbz-haplotype-index --interval 16384 graph.gbz graph.gbz.db graph.haplotype-index.db
-
-# without the GBZ, reading paths from the database
-gbz-haplotype-index --interval 16384 --from-db graph.gbz.db graph.haplotype-index.db
-```
-
-Give `graph.gbz.db` with the GBZ. The tool checks that the two match, and reads
-the top-level snarls from the database, which the stray rows need for a query
-that fills snarls. `--overwrite` replaces an existing index. `--anchor-spacing`
-defaults to 32,768 bp, and `--anchor-sample` places the anchors, bins and stray
-rows on the paths of one reference sample. A query on a reference path without
-them identifies every walk. `--anchor-spacing 0` writes none. The source is in
-[`src/`](../src).
+The [README](../README.md#build-an-index) gives the commands. `--interval`
+defaults to 4,096 bp. Give `graph.gbz.db` with the GBZ. The tool checks that the
+two match, and reads the top-level snarls from the database, which the stray
+rows need for a query that fills snarls. `--overwrite` replaces an existing
+index. `--anchor-spacing` defaults to 32,768 bp, and `--anchor-sample` places
+the anchors, bins and stray rows on the paths of one reference sample. A query
+on a reference path without them identifies every walk. `--anchor-spacing 0`
+writes none. The source is in [`src/`](../src).
 
 `--page-size` sets the SQLite page size, 65,536 by default, so that one page is
 the 64 KiB block a remote reader fetches and every table is two or three levels
@@ -151,23 +143,11 @@ gbz-haplotype-index --interval 16384 --anchor-spacing 131072 \
 - On a 16-thread Intel Mac (macOS 15), the walk aborts inside libmalloc's nano
   zone; `MallocNanoZone=0` or `--threads 8` gets past it.
 
-## Using the haplotype index
-
-```ts
-const db = await GBZBase.open(new RemoteFile(graphUrl), {
-  haplotypeIndex: new RemoteFile(indexUrl),
-})
-```
-
-```bash
-gbz-base-query https://host/graph.gbz.db \
-  --haplotype-index https://host/graph.haplotype-index.db ...
-```
-
-`open` checks the path and node counts recorded in the haplotype index against
-the graph.
-
 ## Querying a subset of the haplotypes
+
+Pass the index to `GBZBase.open` as `haplotypeIndex`, or to `gbz-base-query` as
+`--haplotype-index` ([README](../README.md#query-with-the-index)). `open` checks
+the path and node counts recorded in the haplotype index against the graph.
 
 A query returns every haplotype that passes through the window, 464 in each HPRC
 window we measured. To get a few of them, such as the two haplotypes of HG002,
@@ -289,13 +269,13 @@ The query identifies every walk when one of these holds, and
 
 ## The overview
 
-A view of megabases, or of a whole chromosome, is too much graph to read: 3 Mb
-of chr22 costs about 70 requests and 17 MB, and whole chr6 timed out after
-4,200. For those views the index carries an overview, which the library reads
-with `haplotypeOverview` and `gbz-base-query --overview` in about 7 requests
-whatever the window. For each reference sample with anchors, the indexer walks
-every path once more. A path's visits to the sample's reference nodes place it
-on a reference path; the stretch between two consecutive visits is an excursion,
+A query that reads the graph for 3 Mb of chr22 costs about 70 requests and 17
+MB, and one for whole chr6 timed out after 4,200. For views of megabases or a
+whole chromosome, the index contains an overview, which the library reads with
+`haplotypeOverview` and `gbz-base-query --overview` in about 7 requests whatever
+the window. For each reference sample with anchors, the indexer walks every path
+once more. A path's visits to the sample's reference nodes place it on a
+reference path; the stretch between two consecutive visits is an excursion,
 which replaces the reference bp between the two nodes with the path's own bp.
 The path covers the reference from the first node to the second, and an
 excursion of `--overview-sv` bp or more (50) in either measure marks the bins it
@@ -309,7 +289,7 @@ The paths of one sample and phase make one haplotype, and per bin of
 paths covers the bin, variant when one marked it, partial when they cover less
 than nine tenths of it, and reference-like otherwise. Coarser levels, a factor
 of four apart, sum the coverage and the marks of their bins, and a variant cell
-carries a bucket of the marks (1, 2 to 3, 4 to 15, 16 or more), so haplotypes
+holds a bucket of the marks (1, 2 to 3, 4 to 15, 16 or more), so haplotypes
 still differ at a level where nearly every bin holds some structural difference.
 `HaplotypeOverviewClasses` holds the cells, four bits each, in rows of
 `--overview-chunk` bins (256) per reference path and level;
@@ -435,11 +415,12 @@ format 3, with its parallel reads and read-ahead. The sampled route returns all
 Of a keep1 query's 12 or 13 index requests, 2 open the file, 1 reads the path's
 length, 2 or 3 each read the bins' rows and the anchors' rows (a key index, then
 a run of the table), in parallel, and 3 read the samples on the window's nodes
-for the check after the walks, which now run while the walks do. The graph side
-is unchanged below 1 Mb: the reference walk's node records come in one or two
-prefetched reads, and the rest are nodes the context expansion and the
-identification reach outside them. Past 1 Mb the pager used to refuse a prefetch
-over half its cache and the walk read one block per request; it now fetches the
+for the check of step 6, in parallel with the walks. The graph side is unchanged
+below 1 Mb: the reference walk's node records come in one or two prefetched
+reads, and the rest are nodes the context expansion and the identification reach
+outside them. Past 1 Mb, the pager of 6.0.1 refused a prefetch over half its
+cache, so the walk read one block per request; the next version fetches the
 range in chunks as the walk approaches them. The 3 Mb windows that still cost 60
 to 180 graph requests lie in a region where consecutive reference nodes sit a
-megabyte apart in the node table, so each reference node is its own read.
+megabyte apart in the node table, so the pager fetches each reference node in a
+separate request.
