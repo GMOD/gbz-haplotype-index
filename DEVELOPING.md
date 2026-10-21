@@ -10,23 +10,22 @@ takes, so `src/strays.rs` here and
 there state the same rule. A change to that rule on either side must bump the
 `haplotype_index_stray_format` tag that `src/main.rs` writes and the reader
 tests for; a reader that meets a format it does not know identifies every walk
-instead of trusting the rows. The
-[proof](docs/proof.md)
-names the comparisons on both sides that the rule depends on.
+instead of trusting the rows. The [proof](docs/proof.md) names the comparisons
+on both sides that the rule depends on.
 
-The tables' layout is a separate contract, the `haplotype_index_format` tag
-(3). `src/encode.rs` holds the blob encodings; the reader decodes them in its
+The tables' layout is a separate contract, the `haplotype_index_format` tag (3).
+`src/encode.rs` holds the blob encodings; the reader decodes them in its
 `db.ts`. A change to a table or a blob bumps the tag, and the reader refuses a
-format it does not know. The overview tables of `src/overview.rs` have their
-own tag, `haplotype_index_overview_format` (1), and the reader returns no
-overview for a tag it does not know.
+format it does not know. The overview tables of `src/overview.rs` have their own
+tag, `haplotype_index_overview_format` (1), and the reader returns no overview
+for a tag it does not know.
 
 `src/oracle.rs` restates the keep route's walk plan from `chosenPaths.ts` and
 checks, over every window of whole bins of each fixture, that every visit to a
 window's node lies on a planned walk or in a stray row; a change to the walk
-rule has to change it too. It runs this side only. The fuzzer in gbz-base-js runs the
-reader against the index: build this crate, then run it from a gbz-base-js
-checkout with the binary as the indexer.
+rule has to change it too. It runs this side only. The fuzzer in gbz-base-js
+runs the reader against the index: build this crate, then run it from a
+gbz-base-js checkout with the binary as the indexer.
 
 ```bash
 cargo build --release
