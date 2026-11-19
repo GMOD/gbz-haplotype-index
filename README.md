@@ -69,7 +69,7 @@ fewer requests, and gfa-to-tabix reads a GFA with P or W lines where gbz-base
 needs a GBZ. A gbz-base database grows sublinearly with haplotypes and keeps a
 walk whole where it jumps to a paralog, which affects under 0.1% of chr22's
 steps. gfa-to-tabix's
-[comparison](https://github.com/GMOD/gfa-to-tabix/blob/main/docs/gbz-comparison.md)
+[comparison](https://github.com/GMOD/gfa-to-tabix/blob/main/docs/comparison.md)
 lists sizes, requests and which to pick.
 
 ## Docs
