@@ -5,14 +5,16 @@ query by its haplotype.
 
 [@gmod/gbz-base](https://github.com/GMOD/gbz-base-js) reads the gbz-base
 database (`graph.gbz.db`) and the haplotype index (`graph.haplotype-index.db`)
-and reports the sample, haplotype, contig and coordinate of every walk in a
-window. With `graph.gbz.db` alone, a query labels each walk other than the query
-path `unknown#N`. `gbz-haplotype-index` leaves `graph.gbz.db` unchanged, so an
-index also works with a database someone else hosts, such as HPRC's.
+and reports the sample, haplotype, contig and coordinate of every walk in the
+queried region. With `graph.gbz.db` alone, @gmod/gbz-base names the queried path
+and labels every other walk `unknown#N`. `gbz-haplotype-index` leaves
+`graph.gbz.db` unchanged, so you can build an index for a database someone else
+hosts, such as HPRC's.
 
-To show haplotypes in a browser, we recommend
-[gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix)'s walk files over this
-index ([why](#gfa-to-tabix-or-gbz-haplotype-index)).
+To show haplotypes in a browser, gfa-to-tabix's walk files take fewer requests
+and less storage than gbz-base with this index, and we recommend them. Use this
+index when you already use a gbz-base database or need its whole-chromosome
+overview ([gfa-to-tabix or gbz-haplotype-index](#gfa-to-tabix-or-gbz-haplotype-index)).
 
 ![graph.gbz feeds gbz-base construct, which writes graph.gbz.db, and gbz-haplotype-index, which writes graph.haplotype-index.db. @gmod/gbz-base reads both. With the database alone a query names the reference walk and prints the rest as unknown#N#chr6; with the haplotype index it names each one, such as HG002#1#chr6, with its coordinate](docs/img/overview.svg)
 
@@ -65,31 +67,37 @@ gbz-base-query https://host/graph.gbz.db \
 
 ## gfa-to-tabix or gbz-haplotype-index
 
-[gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix) `--walks` writes every
-haplotype's path through the graph, with its name, into one file per reference
-genome, which a browser reads from any static web host. We recommend these walk
-files over gbz-base with this index for showing haplotypes in a browser:
+[gfa-to-tabix](https://github.com/GMOD/gfa-to-tabix) writes every haplotype's
+path through the graph, with its name, into one walk file per reference genome
+(`gfa-to-tabix graph.gfa --walks --refs GRCh38`). JBrowse's graph plugin reads
+walk files from any static web host. We recommend them over gbz-base with this
+index for showing haplotypes in a browser:
 
-- A browser reads a 64 kb window from a walk file in a few byte ranges, where
-  gbz-base with this index takes tens of round trips
-- On HPRC v2.1, the GRCh38 walk file without bases is a fraction of the size
-  of the gbz-base database, and smaller than this index alone
-- gfa-to-tabix reads the GFA that Minigraph-Cactus and pggb write, with P or W
-  lines, where gbz-base needs a GBZ
+- A browser reads a 64 kb window of a walk file in one to four range requests,
+  where gbz-base with this index takes tens of round trips
+- On HPRC v2.1, the GRCh38 and CHM13 walk files, without bases, are together a
+  third of the size of the gbz-base database, which holds the bases, and
+  smaller than this index
+- gfa-to-tabix reads the GFA that Minigraph-Cactus and pggb write. gbz-base
+  needs a GBZ, which `vg gbwt -G graph.gfa --gbz-format -g graph.gbz` makes,
+  and then `gbz-base construct`
 
-Use gbz-base with this index instead when you already serve a gbz-base
-database, such as HPRC's, or need what walk files lack:
+Use gbz-base with this index instead when you want to use a gbz-base database
+that you or someone else already hosts, such as HPRC's, or need what walk files
+lack:
 
-- coordinates on any path. gfa-to-tabix gives coordinates on the reference
-  genomes chosen when it writes the files
 - an overview of every haplotype across a whole chromosome
-- a graph with many thousands of haplotypes, since a gbz-base database grows
-  more slowly than the number of haplotypes
-- each walk kept whole where it jumps to a paralog. gfa-to-tabix files the
-  steps after such a jump under the paralog's position, which affects under
-  0.1% of chr22's steps
+- each walk kept whole where it jumps to a paralog. When a haplotype's walk
+  steps onto the nodes of a distant paralog and back, gfa-to-tabix stores the
+  steps after the jump at the paralog's position, so at the haplotype's own
+  locus a browser shows the walk in several pieces, with a record of each jump.
+  This affects under 0.1% of steps on HPRC v2.1 Minigraph-Cactus chr22
 
-Sizes, request counts and timings for both tools, and for gfaidx, are in
+The gbz-base database grows far more slowly than the number of haplotypes, but
+this index stores a sample every `--interval` bp along every path, so it grows
+with them.
+
+Sizes, request counts and timings for gfa-to-tabix, gbz-base and gfaidx are in
 gfa-to-tabix's
 [comparison](https://github.com/GMOD/gfa-to-tabix/blob/main/docs/comparison.md)
 and its
